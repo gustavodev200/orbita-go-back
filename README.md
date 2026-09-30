@@ -1,4 +1,4 @@
-# órbitaGO — API (orbita-go-back)
+# órbitaGO — API (orbita-go-back) Backend
 
 API do órbitaGO (finanças + tarefas gamificado): **NestJS + Prisma + Postgres do
 Supabase + Supabase Auth (apenas Google)**. O back nunca faz login: valida o JWT
@@ -86,14 +86,20 @@ regras de segurança já prontos.
 
 ## Índice
 
-- [O que tem aqui](#o-que-tem-aqui)
-- [Como criar um novo projeto a partir do template](#como-criar-um-novo-projeto-a-partir-do-template)
-- [Escolhendo o preset (Prisma/PostgreSQL vs Supabase)](#escolhendo-o-preset)
-- [Como as skills condicionais funcionam](#como-as-skills-condicionais-funcionam)
-- [Como o Claude Code identifica a stack](#como-o-claude-code-identifica-a-stack)
-- [Usando o SpecKit](#usando-o-speckit)
-- [Adicionando uma nova stack](#adicionando-uma-nova-stack)
-- [Arquivos a personalizar por projeto](#arquivos-a-personalizar-por-projeto)
+- [órbitaGO — API (orbita-go-back) Backend](#órbitago--api-orbita-go-back-backend)
+  - [Setup](#setup)
+    - [Lembretes por push (Web Push)](#lembretes-por-push-web-push)
+- [workspace-agents](#workspace-agents)
+  - [Índice](#índice)
+  - [O que tem aqui](#o-que-tem-aqui)
+  - [Como criar um novo projeto a partir do template](#como-criar-um-novo-projeto-a-partir-do-template)
+  - [Escolhendo o preset](#escolhendo-o-preset)
+  - [Como as skills condicionais funcionam](#como-as-skills-condicionais-funcionam)
+  - [Como o Claude Code identifica a stack](#como-o-claude-code-identifica-a-stack)
+  - [Usando o SpecKit](#usando-o-speckit)
+    - [Auditoria completa (fora do fluxo por feature)](#auditoria-completa-fora-do-fluxo-por-feature)
+  - [Adicionando uma nova stack](#adicionando-uma-nova-stack)
+  - [Arquivos a personalizar por projeto](#arquivos-a-personalizar-por-projeto)
 
 ## O que tem aqui
 
