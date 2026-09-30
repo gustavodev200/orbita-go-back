@@ -128,24 +128,41 @@ export class GoalsService {
           'installmentCents: parcela não pode ser maior que a meta',
         );
       }
-      // "Regenerar a trilha": mudar valor, prazo ou frequência reseta a
-      // âncora da trilha por data pra hoje (ou apaga a trilha por data se
-      // prazo/frequência deixaram de coexistir).
-      const regenerate =
-        'targetCents' in dto || 'deadline' in dto || 'frequency' in dto;
-      const mergedDeadline = 'deadline' in dto ? dto.deadline : goal.deadline;
+      const mergedDeadline =
+        ('deadline' in dto ? dto.deadline : goal.deadline) ?? null;
       const mergedFrequency =
-        'frequency' in dto ? dto.frequency : goal.frequency;
+        ('frequency' in dto ? dto.frequency : goal.frequency) ?? null;
+      // "Regenerar a trilha": só quando valor, prazo ou frequência de fato
+      // MUDAM de valor (não só porque o campo veio no payload — um PATCH que
+      // reenvia o mesmo valor, ex. editar só o nome, não deve reancorar).
+      const regenerate =
+        target !== goal.targetCents ||
+        mergedDeadline !== goal.deadline ||
+        mergedFrequency !== goal.frequency;
       let trailStartDate = goal.trailStartDate;
       if (regenerate) {
         trailStartDate =
           mergedDeadline && mergedFrequency ? businessDay() : null;
       }
+      // Os baús ficam nos passos `chestStepsFor(steps)` — se a trilha
+      // regenerada tem uma quantidade de passos diferente, essas posições
+      // mudam, e os índices salvos em `chestsOpened` (da trilha antiga)
+      // deixam de significar a mesma coisa. Sem resetar, um baú novo podia
+      // nascer "já aberto" por coincidência de índice e o usuário perder a
+      // recompensa sem nunca ter passado por ele nesta trilha.
+      const stepsBefore = stepsFor(goal);
+      const stepsAfter = stepsFor({
+        deadline: mergedDeadline,
+        frequency: mergedFrequency,
+        trailStartDate,
+      });
+      const chestsOpened = stepsBefore === stepsAfter ? goal.chestsOpened : [];
       const updated = await tx.goal.update({
         where: { id: goal.id },
         data: {
           ...dto,
           trailStartDate,
+          chestsOpened,
           completedAt:
             goal.savedCents >= target ? (goal.completedAt ?? new Date()) : null,
         },

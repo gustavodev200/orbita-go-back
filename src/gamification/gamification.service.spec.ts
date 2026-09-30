@@ -109,6 +109,17 @@ describe('scheduleDatesOf', () => {
       '2026-09-20',
     ]);
   });
+
+  it('mensal: dia 31 não fica "preso" em 28 depois de atravessar fevereiro', () => {
+    // 31/jan → fev clampa pra 28 (2026 não é bissexto) → mar deve voltar pro dia 31
+    // (não ficar em 28 só porque o mês anterior clampou).
+    expect(scheduleDatesOf('2026-01-31', '2026-05-31', 'monthly')).toEqual([
+      '2026-02-28',
+      '2026-03-31',
+      '2026-04-30',
+      '2026-05-31',
+    ]);
+  });
 });
 
 describe('GamificationService.award', () => {

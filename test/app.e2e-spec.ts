@@ -598,6 +598,59 @@ describe('órbitaGO e2e walkthrough', () => {
     });
   });
 
+  describe('goal trail schedule edge cases', () => {
+    let scheduleGoalId: string;
+    let trailStartDate0: string;
+
+    it('creates a goal with deadline + frequency on a date-based trail', async () => {
+      const res = await http
+        .post('/goals')
+        .send({
+          name: 'Notebook',
+          targetCents: 600000,
+          icon: 'laptop_mac',
+          deadline: '2099-12-31',
+          frequency: 'monthly',
+        })
+        .expect(201);
+      scheduleGoalId = res.body.id;
+      trailStartDate0 = res.body.trailStartDate;
+      expect(trailStartDate0).toBe(businessDay());
+      expect(res.body.steps).toBeGreaterThan(10);
+    });
+
+    it('a full deposit opens every chest on the date-based trail', async () => {
+      const res = await http
+        .post(`/goals/${scheduleGoalId}/deposit`)
+        .send({ amountCents: 600000 })
+        .expect(200);
+      expect(res.body.data.completed).toBe(true);
+      expect(res.body.data.chestsOpened).toHaveLength(2);
+      expect(res.body.reward.coins).toBe(100);
+    });
+
+    it('a content-only PATCH (installmentCents) does not reset trailStartDate nor chestsOpened', async () => {
+      const res = await http
+        .patch(`/goals/${scheduleGoalId}`)
+        .send({ installmentCents: 12345 })
+        .expect(200);
+      expect(res.body.trailStartDate).toBe(trailStartDate0);
+      expect(res.body.chestsOpened).toHaveLength(2);
+    });
+
+    it('changing frequency (a real change, not a resend) regenerates the trail and drops stale chestsOpened', async () => {
+      const res = await http
+        .patch(`/goals/${scheduleGoalId}`)
+        .send({ frequency: 'weekly' })
+        .expect(200);
+      expect(res.body.frequency).toBe('weekly');
+      expect(res.body.trailStartDate).toBe(businessDay());
+      // Passos mudam de mensal pra semanal (mesmo prazo) → baús antigos não
+      // valem mais pra essa trilha nova.
+      expect(res.body.chestsOpened).toEqual([]);
+    });
+  });
+
   // ---------------------------------------------------------------------
   // Tasks
   // ---------------------------------------------------------------------

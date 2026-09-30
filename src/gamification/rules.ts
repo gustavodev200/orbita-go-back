@@ -89,17 +89,23 @@ export function scheduleDatesOf(
   deadline: string,
   frequency: GoalFrequency,
 ): string[] {
-  function next(day: string): string {
-    if (frequency === 'weekly') return addDays(day, 7);
-    if (frequency === 'biweekly') return addDays(day, 15);
-    return addMonthsToDay(day, 1);
+  // Mensal sempre soma a partir da âncora original (não encadeia a partir do
+  // resultado anterior): se um mês curto clampar o dia (ex.: 31 de jan → 28
+  // de fev), o mês seguinte tem que voltar pro dia certo (31 de mar), não
+  // ficar "preso" em 28 pra sempre.
+  function occurrence(n: number): string {
+    if (frequency === 'weekly') return addDays(trailStartDate, n * 7);
+    if (frequency === 'biweekly') return addDays(trailStartDate, n * 15);
+    return addMonthsToDay(trailStartDate, n);
   }
 
   const dates: string[] = [];
-  let cur = next(trailStartDate);
+  let n = 1;
+  let cur = occurrence(n);
   while (cur < deadline) {
     dates.push(cur);
-    cur = next(cur);
+    n += 1;
+    cur = occurrence(n);
   }
   dates.push(deadline);
   return dates;
