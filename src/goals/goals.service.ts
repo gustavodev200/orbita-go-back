@@ -11,11 +11,14 @@ import {
   type Rewarded,
 } from '../gamification/gamification.service';
 import {
-  GOAL_CHEST_STEPS,
+  chestStepsFor,
   GOAL_STEPS,
   goalStep,
+  scheduleDatesOf,
   XP_RULES,
+  type GoalFrequency,
 } from '../gamification/rules';
+import { businessDay } from '../common/time/business-time';
 import { PrismaService, type Tx } from '../prisma/prisma.service';
 import type { GoalInput, UpdateGoalInput } from './dto/goal.schema';
 
@@ -26,14 +29,32 @@ export interface GoalDto {
   targetCents: number;
   savedCents: number;
   installmentCents: number | null;
-  steps: typeof GOAL_STEPS;
+  steps: number;
   currentStep: number;
   chestsOpened: number[];
   completed: boolean;
   deadline: string | null;
+  frequency: GoalFrequency | null;
+  trailStartDate: string | null;
+}
+
+/**
+ * Quantos passos tem a trilha desta meta: por dinheiro (10 fixos) sem
+ * prazo+frequência configurados; por data (1 passo por aporte esperado)
+ * quando os dois estão presentes.
+ */
+function stepsFor(
+  goal: Pick<Goal, 'deadline' | 'frequency' | 'trailStartDate'>,
+): number {
+  if (!goal.deadline || !goal.frequency || !goal.trailStartDate) {
+    return GOAL_STEPS;
+  }
+  return scheduleDatesOf(goal.trailStartDate, goal.deadline, goal.frequency)
+    .length;
 }
 
 export function toGoalDto(goal: Goal): GoalDto {
+  const steps = stepsFor(goal);
   return {
     id: goal.id,
     name: goal.name,
@@ -41,11 +62,13 @@ export function toGoalDto(goal: Goal): GoalDto {
     targetCents: goal.targetCents,
     savedCents: goal.savedCents,
     installmentCents: goal.installmentCents,
-    steps: GOAL_STEPS,
-    currentStep: goalStep(goal.savedCents, goal.targetCents),
+    steps,
+    currentStep: goalStep(goal.savedCents, goal.targetCents, steps),
     chestsOpened: goal.chestsOpened,
     completed: goal.completedAt !== null,
     deadline: goal.deadline,
+    frequency: goal.frequency,
+    trailStartDate: goal.trailStartDate,
   };
 }
 
@@ -75,7 +98,12 @@ export class GoalsService {
       dto.savedCents != null && dto.savedCents >= dto.targetCents
         ? new Date()
         : null;
-    return tx.goal.create({ data: { userId, ...dto, completedAt } });
+    // Trilha por data só existe com prazo + frequência juntos; a âncora
+    // começa a contar de hoje.
+    const trailStartDate = dto.deadline && dto.frequency ? businessDay() : null;
+    return tx.goal.create({
+      data: { userId, ...dto, completedAt, trailStartDate },
+    });
   }
 
   async update(
@@ -100,10 +128,24 @@ export class GoalsService {
           'installmentCents: parcela não pode ser maior que a meta',
         );
       }
+      // "Regenerar a trilha": mudar valor, prazo ou frequência reseta a
+      // âncora da trilha por data pra hoje (ou apaga a trilha por data se
+      // prazo/frequência deixaram de coexistir).
+      const regenerate =
+        'targetCents' in dto || 'deadline' in dto || 'frequency' in dto;
+      const mergedDeadline = 'deadline' in dto ? dto.deadline : goal.deadline;
+      const mergedFrequency =
+        'frequency' in dto ? dto.frequency : goal.frequency;
+      let trailStartDate = goal.trailStartDate;
+      if (regenerate) {
+        trailStartDate =
+          mergedDeadline && mergedFrequency ? businessDay() : null;
+      }
       const updated = await tx.goal.update({
         where: { id: goal.id },
         data: {
           ...dto,
+          trailStartDate,
           completedAt:
             goal.savedCents >= target ? (goal.completedAt ?? new Date()) : null,
         },
@@ -139,9 +181,10 @@ export class GoalsService {
         goal.targetCents,
         goal.savedCents + amountCents,
       );
-      const step = goalStep(savedCents, goal.targetCents);
-      // Baús após os passos 3 e 7: abrem ao passar, +50 moedas cada.
-      const newChests = GOAL_CHEST_STEPS.filter(
+      const steps = stepsFor(goal);
+      const step = goalStep(savedCents, goal.targetCents, steps);
+      // Baús proporcionais ao tamanho da trilha (~30%/~70%): abrem ao passar, +50 moedas cada.
+      const newChests = chestStepsFor(steps).filter(
         (chest) => step >= chest && !goal.chestsOpened.includes(chest),
       );
       const completed = savedCents >= goal.targetCents;

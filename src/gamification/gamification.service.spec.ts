@@ -1,6 +1,12 @@
 import type { PrismaService, Tx } from '../prisma/prisma.service';
 import { GamificationService } from './gamification.service';
-import { applyXp, effectiveStreak, goalStep } from './rules';
+import {
+  applyXp,
+  chestStepsFor,
+  effectiveStreak,
+  goalStep,
+  scheduleDatesOf,
+} from './rules';
 
 describe('applyXp', () => {
   it('acumula sem subir de nível abaixo de 1500', () => {
@@ -41,6 +47,67 @@ describe('goalStep', () => {
     expect(goalStep(0, 800000)).toBe(0);
     expect(goalStep(320000, 800000)).toBe(4);
     expect(goalStep(900000, 800000)).toBe(10);
+  });
+
+  it('aceita uma quantidade de passos diferente de 10', () => {
+    expect(goalStep(100000, 500000, 5)).toBe(1);
+    expect(goalStep(600000, 500000, 5)).toBe(5);
+  });
+});
+
+describe('chestStepsFor', () => {
+  it('trilha padrão de 10 passos: baús após os passos 3 e 7 (compatibilidade)', () => {
+    expect(chestStepsFor(10)).toEqual([3, 7]);
+  });
+
+  it('trilha curta: dedupe quando os dois baús cairiam no mesmo passo', () => {
+    expect(chestStepsFor(2)).toEqual([1]);
+  });
+
+  it('trilha de 1 passo: sem baú (não cabe entre o início e o troféu)', () => {
+    expect(chestStepsFor(1)).toEqual([]);
+  });
+
+  it('trilha de 4 passos: baús proporcionais em ~30% e ~70%', () => {
+    expect(chestStepsFor(4)).toEqual([1, 3]);
+  });
+});
+
+describe('scheduleDatesOf', () => {
+  const START = '2026-09-30';
+
+  it('semanal: um aporte a cada 7 dias até o prazo', () => {
+    expect(scheduleDatesOf(START, '2026-10-21', 'weekly')).toEqual([
+      '2026-10-07',
+      '2026-10-14',
+      '2026-10-21',
+    ]);
+  });
+
+  it('quinzenal: um aporte a cada 15 dias, último absorve o resto', () => {
+    expect(scheduleDatesOf(START, '2026-11-20', 'biweekly')).toEqual([
+      '2026-10-15',
+      '2026-10-30',
+      '2026-11-14',
+      '2026-11-20',
+    ]);
+  });
+
+  it('mensal: mesmo dia do mês, avançando', () => {
+    expect(scheduleDatesOf(START, '2026-12-30', 'monthly')).toEqual([
+      '2026-10-30',
+      '2026-11-30',
+      '2026-12-30',
+    ]);
+  });
+
+  it('prazo já vencido (ou no mesmo dia): sempre pelo menos 1 data (o prazo)', () => {
+    expect(scheduleDatesOf(START, '2026-09-30', 'monthly')).toEqual([
+      '2026-09-30',
+    ]);
+    expect(scheduleDatesOf(START, '2026-09-20', 'weekly')).toEqual([
+      '2026-09-20',
+    ]);
   });
 });
 

@@ -43,6 +43,12 @@ enum ReminderRepeat {
   monthly
 }
 
+enum GoalFrequency {
+  weekly
+  biweekly
+  monthly
+}
+
 /// Pessoa autenticada — id = `sub` do JWT do Supabase Auth (upsert no 1º request).
 /// Guarda também o estado de gamificação (nível, XP, moedas, ofensiva, loja).
 model User {
@@ -191,6 +197,11 @@ model Goal {
   chestsOpened Int[]     @default([]) @map("chests_opened")
   /// Prazo opcional definido pelo usuário, formato YYYY-MM (mês/ano — não dia).
   deadline     String?
+  /// Cadência dos aportes sugeridos (só usada com `deadline`); nulo = trilha por dinheiro (10 passos fixos).
+  frequency    GoalFrequency?
+  /// Data (YYYY-MM-DD) de onde a trilha por data começa a contar; reseta pra hoje sempre que
+  /// targetCents, deadline ou frequency mudam — é isso que "regenera" a trilha.
+  trailStartDate String? @map("trail_start_date")
   completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 

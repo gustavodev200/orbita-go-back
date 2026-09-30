@@ -1,4 +1,8 @@
-import { diffDays } from '../common/time/business-time';
+import {
+  addDays,
+  addMonthsToDay,
+  diffDays,
+} from '../common/time/business-time';
 
 export const XP_TO_NEXT = 1500;
 
@@ -16,8 +20,10 @@ export const XP_RULES = {
 
 export const SHIELD_PRICE = 200;
 export const GOAL_STEPS = 10;
-export const GOAL_CHEST_STEPS = [3, 7] as const;
 export const DEFAULT_BOSS_ATTACK_CENTS = 30_000;
+
+export const GOAL_FREQUENCIES = ['weekly', 'biweekly', 'monthly'] as const;
+export type GoalFrequency = (typeof GOAL_FREQUENCIES)[number];
 
 export interface LevelState {
   level: number;
@@ -48,13 +54,53 @@ export function effectiveStreak(
   return diffDays(lastClosedDay, today) <= 1 ? streak : 0;
 }
 
-/** Passo atual da trilha (0–10) a partir do valor guardado. */
-export function goalStep(savedCents: number, targetCents: number): number {
+/** Passo atual da trilha (0–`steps`) a partir do valor guardado. */
+export function goalStep(
+  savedCents: number,
+  targetCents: number,
+  steps: number = GOAL_STEPS,
+): number {
   if (targetCents <= 0) {
     return 0;
   }
-  return Math.min(
-    GOAL_STEPS,
-    Math.floor((savedCents / targetCents) * GOAL_STEPS),
-  );
+  return Math.min(steps, Math.floor((savedCents / targetCents) * steps));
+}
+
+/**
+ * Passos (1-based) após os quais abre um baú, proporcional ao tamanho da
+ * trilha (~30% e ~70% do caminho). Pra `steps` = 10 (trilha padrão, sem
+ * prazo/frequência) dá exatamente [3, 7] — mesmo resultado de sempre.
+ */
+export function chestStepsFor(steps: number): number[] {
+  const candidates = [Math.round(steps * 0.3), Math.round(steps * 0.7)];
+  return [...new Set(candidates)]
+    .filter((step) => step > 0 && step < steps)
+    .sort((a, b) => a - b);
+}
+
+/**
+ * Datas (YYYY-MM-DD) de cada aporte esperado entre `trailStartDate` e
+ * `deadline`, na cadência escolhida. Sempre termina exatamente no prazo
+ * (o último intervalo absorve o resto, igual à divisão de valores por
+ * passo) e sempre tem pelo menos 1 data.
+ */
+export function scheduleDatesOf(
+  trailStartDate: string,
+  deadline: string,
+  frequency: GoalFrequency,
+): string[] {
+  function next(day: string): string {
+    if (frequency === 'weekly') return addDays(day, 7);
+    if (frequency === 'biweekly') return addDays(day, 15);
+    return addMonthsToDay(day, 1);
+  }
+
+  const dates: string[] = [];
+  let cur = next(trailStartDate);
+  while (cur < deadline) {
+    dates.push(cur);
+    cur = next(cur);
+  }
+  dates.push(deadline);
+  return dates;
 }

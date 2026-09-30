@@ -78,6 +78,29 @@ export function addMonths(month: string, amount: number): string {
   return dateToDay(date).slice(0, 7);
 }
 
+/** Soma meses a um dia (YYYY-MM-DD) preservando o dia; clampa pro último dia se o mês de destino for mais curto. */
+export function addMonthsToDay(day: string, amount: number): string {
+  const [year, monthNumber, dayNumber] = day.split('-').map(Number);
+  const firstOfTarget = new Date(Date.UTC(year, monthNumber - 1 + amount, 1));
+  const lastDayOfTarget = new Date(
+    Date.UTC(
+      firstOfTarget.getUTCFullYear(),
+      firstOfTarget.getUTCMonth() + 1,
+      0,
+    ),
+  ).getUTCDate();
+  const clampedDay = Math.min(dayNumber, lastDayOfTarget);
+  return dateToDay(
+    new Date(
+      Date.UTC(
+        firstOfTarget.getUTCFullYear(),
+        firstOfTarget.getUTCMonth(),
+        clampedDay,
+      ),
+    ),
+  );
+}
+
 /** Intervalo [1º dia do mês, 1º dia do mês seguinte) para colunas @db.Date. */
 export function monthDateRange(month: string): { gte: Date; lt: Date } {
   return {

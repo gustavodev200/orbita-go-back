@@ -495,6 +495,8 @@ describe('órbitaGO e2e walkthrough', () => {
     'chestsOpened',
     'completed',
     'deadline',
+    'frequency',
+    'trailStartDate',
   ].sort();
 
   describe('goals', () => {
@@ -521,6 +523,26 @@ describe('órbitaGO e2e walkthrough', () => {
         .send({ installmentCents: 10000 })
         .expect(200);
       expect(res.body.installmentCents).toBe(10000);
+    });
+
+    it('setting deadline + frequency switches the trail to a date-based schedule', async () => {
+      const res = await http
+        .patch(`/goals/${goalId}`)
+        .send({ deadline: '2099-12-31', frequency: 'monthly' })
+        .expect(200);
+      expect(res.body.frequency).toBe('monthly');
+      expect(res.body.trailStartDate).toBe(businessDay());
+      expect(res.body.steps).toBeGreaterThan(10);
+    });
+
+    it('clearing the deadline drops the date-based schedule back to the fixed 10-step trail', async () => {
+      const res = await http
+        .patch(`/goals/${goalId}`)
+        .send({ deadline: null, frequency: null })
+        .expect(200);
+      expect(res.body.frequency).toBeNull();
+      expect(res.body.trailStartDate).toBeNull();
+      expect(res.body.steps).toBe(10);
     });
 
     it('deposit crossing step 3 opens exactly one chest (+50 coins)', async () => {

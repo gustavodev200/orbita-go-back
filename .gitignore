@@ -20,3 +20,6 @@
 *.pem
 npm-debug.log*
 /src/generated
+
+.vercel
+.env*

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { centsSchema, daySchema } from '../../common/schemas/common.schema';
+import { GOAL_FREQUENCIES } from '../../gamification/rules';
 
 const goalShape = z.object({
   name: z.string().trim().min(1).max(60),
@@ -14,6 +15,9 @@ const goalShape = z.object({
   deadline: daySchema.nullable().optional(),
   // Quanto guardar por vez (modo manual). Nulo/ausente = gerado (target/10).
   installmentCents: centsSchema.nullable().optional(),
+  // Cadência dos aportes sugeridos na trilha por data; só faz efeito com
+  // `deadline` também definido. Nulo/ausente = trilha por dinheiro (10 passos).
+  frequency: z.enum(GOAL_FREQUENCIES).nullable().optional(),
 });
 
 const installmentFitsTarget = (v: {
