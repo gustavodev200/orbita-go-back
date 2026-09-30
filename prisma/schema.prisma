@@ -59,7 +59,7 @@ model User {
   shields              Int       @default(0)
   lastClosedDay        DateTime? @map("last_closed_day") @db.Date
   theme                Theme     @default(system)
-  notificationsEnabled Boolean   @default(true) @map("notifications_enabled")
+  notificationsEnabled Boolean   @default(false) @map("notifications_enabled")
   monthlyIncomeCents   Int?      @map("monthly_income_cents")
   ownedItems           String[]  @default([]) @map("owned_items")
   enabledCategoryKeys  String[]  @default([]) @map("enabled_category_keys")
