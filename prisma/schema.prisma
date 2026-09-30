@@ -213,7 +213,8 @@ model Task {
   xpAwarded  Boolean   @default(false) @map("xp_awarded")
   createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder Reminder?
 
   @@index([userId])
   @@map("tasks")
@@ -233,8 +234,11 @@ model Reminder {
   /// Dedupe do cron de push: última vez que essa ocorrência foi disparada.
   lastFiredAt DateTime?      @map("last_fired_at") @db.Timestamptz(6)
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+  /// Preenchido só para lembretes derivados de `Task.reminderAt` (kind = task) — permite sync/cascade.
+  taskId      String?        @unique @map("task_id") @db.Uuid
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("reminders")

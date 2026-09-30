@@ -36,6 +36,51 @@ function dueDateData(value: string | null | undefined) {
   return value ? dayToDate(value) : null;
 }
 
+/**
+ * `reminderAt` de task só sai da tela como "HH:mm" (recorrente — não usado
+ * hoje) ou datetime ISO "YYYY-MM-DDTHH:mm:ss±HH:mm" (sempre que a tela de
+ * tarefas grava, via `reminderAtFrom`). Só o segundo formato carrega uma data
+ * — sem ela não dá pra criar uma ocorrência (`Reminder.repeat = 'none'`).
+ */
+function parseReminderAt(value: string): { date: string; time: string } | null {
+  if (value.length < 16) return null;
+  return { date: value.slice(0, 10), time: value.slice(11, 16) };
+}
+
+// Mantém o Reminder (kind='task', repeat='none') em sincronia com `Task.reminderAt`
+// pra o cron de push (`DispatchRemindersService`) enxergar lembretes de tarefa.
+async function syncReminder(
+  tx: Tx,
+  task: Pick<Task, 'id' | 'userId' | 'title' | 'reminderAt'>,
+  enabled = true,
+): Promise<void> {
+  const parsed = task.reminderAt ? parseReminderAt(task.reminderAt) : null;
+  if (!parsed) {
+    await tx.reminder.deleteMany({ where: { taskId: task.id } });
+    return;
+  }
+  await tx.reminder.upsert({
+    where: { taskId: task.id },
+    create: {
+      userId: task.userId,
+      taskId: task.id,
+      title: task.title,
+      kind: 'task',
+      repeat: 'none',
+      time: parsed.time,
+      date: dayToDate(parsed.date),
+      enabled,
+    },
+    update: {
+      title: task.title,
+      time: parsed.time,
+      date: dayToDate(parsed.date),
+      enabled,
+      lastFiredAt: null,
+    },
+  });
+}
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -56,16 +101,19 @@ export class TasksService {
   }
 
   async create(userId: string, dto: CreateTaskInput): Promise<TaskDto> {
-    const task = await this.prisma.db.task.create({
-      data: {
-        userId,
-        title: dto.title,
-        priority: dto.priority,
-        dueDate: dueDateData(dto.dueDate) ?? null,
-        reminderAt: dto.reminderAt ?? null,
-      },
+    return this.prisma.transaction(async (tx) => {
+      const task = await tx.task.create({
+        data: {
+          userId,
+          title: dto.title,
+          priority: dto.priority,
+          dueDate: dueDateData(dto.dueDate) ?? null,
+          reminderAt: dto.reminderAt ?? null,
+        },
+      });
+      await syncReminder(tx, task);
+      return toDto(task);
     });
-    return toDto(task);
   }
 
   async update(
@@ -84,6 +132,9 @@ export class TasksService {
           reminderAt: dto.reminderAt,
         },
       });
+      if (dto.reminderAt !== undefined || dto.title !== undefined) {
+        await syncReminder(tx, updated, !updated.done);
+      }
       return toDto(updated);
     });
   }
@@ -91,6 +142,7 @@ export class TasksService {
   async remove(userId: string, id: string): Promise<TaskDto> {
     return this.prisma.transaction(async (tx) => {
       const task = await this.findOwned(tx, userId, id);
+      // FK `reminders.task_id` é ON DELETE CASCADE — o lembrete some junto.
       await tx.task.delete({ where: { id: task.id } });
       return toDto(task);
     });
@@ -106,6 +158,11 @@ export class TasksService {
         where: { id: task.id },
         data: { done: true, doneAt: new Date(), xpAwarded: true },
       });
+      // Tarefa concluída não precisa mais avisar — desliga sem apagar (uncomplete religa).
+      await tx.reminder.updateMany({
+        where: { taskId: id },
+        data: { enabled: false },
+      });
       // XP só na 1ª conclusão — desmarcar e marcar de novo não rende XP.
       const reward = task.xpAwarded
         ? null
@@ -120,6 +177,10 @@ export class TasksService {
       const updated = await tx.task.update({
         where: { id: task.id },
         data: { done: false, doneAt: null },
+      });
+      await tx.reminder.updateMany({
+        where: { taskId: id },
+        data: { enabled: true },
       });
       return toDto(updated);
     });
