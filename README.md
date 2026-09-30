@@ -1,4 +1,4 @@
-# órbitaGO — API (orbita-go-back) Backend
+# órbitaGO — API (orbita-go-back) Backend Nest.js
 
 API do órbitaGO (finanças + tarefas gamificado): **NestJS + Prisma + Postgres do
 Supabase + Supabase Auth (apenas Google)**. O back nunca faz login: valida o JWT
@@ -86,7 +86,7 @@ regras de segurança já prontos.
 
 ## Índice
 
-- [órbitaGO — API (orbita-go-back) Backend](#órbitago--api-orbita-go-back-backend)
+- [órbitaGO — API (orbita-go-back) Backend Nest.js](#órbitago--api-orbita-go-back-backend-nestjs)
   - [Setup](#setup)
     - [Lembretes por push (Web Push)](#lembretes-por-push-web-push)
 - [workspace-agents](#workspace-agents)
