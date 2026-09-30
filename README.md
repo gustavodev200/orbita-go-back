@@ -62,9 +62,39 @@ dos lembretes é um cron externo. `POST /internal/dispatch-reminders` varre os
 lembretes habilitados, dispara Web Push (lib `web-push`, chaves VAPID acima)
 pros dispositivos inscritos via `POST/DELETE /push/subscribe`, e é protegido
 pelo header `X-Cron-Secret` (não é rota de usuário — não passa pelo guard de
-JWT). `.github/workflows/dispatch-reminders.yml` já chama essa rota a cada 5
-min; para funcionar após o deploy, configure em **Settings > Secrets and
-variables > Actions** do repositório do GitHub:
+JWT).
+
+**Disparador principal: `pg_cron` + `pg_net` no próprio Supabase** (mais
+confiável — roda todo minuto, sem depender de infra externa). Setup (rodar
+uma vez, no SQL Editor do Supabase ou via `psql`/script contra `DATABASE_URL`):
+
+```sql
+create extension if not exists pg_net;
+create extension if not exists pg_cron;
+
+select cron.schedule(
+  'dispatch-reminders',
+  '* * * * *',
+  $$
+  select net.http_post(
+    url := '<API_URL>/internal/dispatch-reminders',
+    headers := jsonb_build_object('X-Cron-Secret', '<CRON_SECRET>', 'Content-Type', 'application/json'),
+    body := '{}'::jsonb
+  );
+  $$
+);
+```
+
+Conferir execução: `select * from cron.job_run_details order by start_time desc limit 5;`
+e `select * from net._http_response order by created desc limit 5;` (deve
+mostrar `status_code = 200`).
+
+**Backup: `.github/workflows/dispatch-reminders.yml`** também chama a rota a
+cada 5 min via GitHub Actions — mas contas gratuitas/pessoais têm schedule
+`*/5` frequentemente atrasado por horas (limitação documentada do GitHub, não
+bug nosso), então não é a fonte principal, só redundância. Para ativar mesmo
+assim, configure em **Settings > Secrets and variables > Actions** do
+repositório do GitHub:
 
 - `API_URL` — URL pública do back em produção (ex.: `https://orbita-go-back.vercel.app`).
 - `CRON_SECRET` — mesmo valor da env `CRON_SECRET` configurada no deploy.
