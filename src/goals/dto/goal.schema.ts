@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { centsSchema, monthSchema } from '../../common/schemas/common.schema';
+import { centsSchema, daySchema } from '../../common/schemas/common.schema';
 
 const goalShape = z.object({
   name: z.string().trim().min(1).max(60),
@@ -8,8 +8,10 @@ const goalShape = z.object({
     .string()
     .trim()
     .regex(/^[a-z0-9_]{1,40}$/, 'ícone inválido'),
-  // Prazo opcional definido pelo usuário — mês/ano (YYYY-MM), não um dia exato.
-  deadline: monthSchema.nullable().optional(),
+  // Prazo opcional definido pelo usuário — dia exato (YYYY-MM-DD). Metas
+  // antigas podem ter só "YYYY-MM" salvo (formato anterior); back e front
+  // tratam esse caso lendo o dia como 01.
+  deadline: daySchema.nullable().optional(),
   // Quanto guardar por vez (modo manual). Nulo/ausente = gerado (target/10).
   installmentCents: centsSchema.nullable().optional(),
 });
