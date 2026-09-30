@@ -9,6 +9,7 @@ import {
   businessDayRange,
   dayToDate,
 } from '../common/time/business-time';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService, type Tx } from '../prisma/prisma.service';
 import { isMissionComplete, MISSIONS, type MissionDef } from './catalog';
 import { GamificationService, type Rewarded } from './gamification.service';
@@ -62,9 +63,24 @@ export class MissionsService {
       ) {
         throw new BadRequestException('Missão ainda não concluída');
       }
-      await tx.missionClaim.create({
-        data: { userId, missionKey: mission.key, day: dayToDate(today) },
-      });
+      try {
+        await tx.missionClaim.create({
+          data: { userId, missionKey: mission.key, day: dayToDate(today) },
+        });
+      } catch (error) {
+        // Concurrent double-submit races past the `state.claimed.has` check
+        // above (both reads happen before either write commits) — without
+        // this, the loser hits the (userId, missionKey, day) unique
+        // constraint and surfaces as an unhandled 500 instead of the same
+        // 409 a sequential double-claim already gets.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException('Missão já resgatada hoje');
+        }
+        throw error;
+      }
       state.claimed.add(mission.key);
       const reward = await this.gamification.award(
         userId,

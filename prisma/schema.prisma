@@ -186,6 +186,8 @@ model Goal {
   icon         String
   targetCents  Int       @map("target_cents")
   savedCents   Int       @default(0) @map("saved_cents")
+  /// Quanto guardar por vez (sugestão da trilha). Nulo = gerado (target/10).
+  installmentCents Int?  @map("installment_cents")
   chestsOpened Int[]     @default([]) @map("chests_opened")
   /// Prazo opcional definido pelo usuário, formato YYYY-MM (mês/ano — não dia).
   deadline     String?

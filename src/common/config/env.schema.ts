@@ -10,7 +10,7 @@ export const envSchema = z.object({
     .trim()
     .optional()
     .transform((value) => (value ? value : undefined)),
-  FRONTEND_URL: z.string().min(1).default('https://orbita-go-front.vercel.app'),
+  FRONTEND_URL: z.string().min(1).default('http://localhost:3000'),
   PORT: z.coerce.number().int().positive().default(3333),
   // Web Push (VAPID) — mesmo par de chaves publicado pelo front como
   // NEXT_PUBLIC_VAPID_PUBLIC_KEY. Gerar com `npx web-push generate-vapid-keys`.

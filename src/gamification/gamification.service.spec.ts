@@ -69,6 +69,7 @@ describe('GamificationService.award', () => {
 
   function buildTx(opts: { owned?: string[]; transactions?: number } = {}) {
     const tx = {
+      $queryRaw: jest.fn().mockResolvedValue([{ id: 'u1' }]),
       user: {
         findUniqueOrThrow: jest.fn().mockResolvedValue(baseUser),
         update: jest.fn(({ data }: { data: object }) =>

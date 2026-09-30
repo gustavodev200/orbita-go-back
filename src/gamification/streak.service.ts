@@ -14,6 +14,7 @@ import {
   diffDays,
   monthOf,
 } from '../common/time/business-time';
+import { Prisma } from '../generated/prisma/client';
 import { PrismaService, type Tx } from '../prisma/prisma.service';
 import { toMe, type Me } from '../users/me';
 import type { AchievementKey } from './catalog';
@@ -98,9 +99,22 @@ export class StreakService {
         throw new BadRequestException('Moedas insuficientes');
       }
       const yesterday = addDays(today, -1);
-      await tx.streakDay.create({
-        data: { userId, day: dayToDate(yesterday), shielded: true },
-      });
+      try {
+        await tx.streakDay.create({
+          data: { userId, day: dayToDate(yesterday), shielded: true },
+        });
+      } catch (error) {
+        // Concurrent double-submit of the shield action (or a stale
+        // lastClosedDay read racing another request) would otherwise hit the
+        // (userId, day) unique constraint and surface as an unhandled 500.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException('Ofensiva já protegida para este dia');
+        }
+        throw error;
+      }
       const updated = await tx.user.update({
         where: { id: userId },
         data: {

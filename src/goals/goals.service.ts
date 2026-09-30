@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -24,6 +25,7 @@ export interface GoalDto {
   icon: string;
   targetCents: number;
   savedCents: number;
+  installmentCents: number | null;
   steps: typeof GOAL_STEPS;
   currentStep: number;
   chestsOpened: number[];
@@ -38,6 +40,7 @@ export function toGoalDto(goal: Goal): GoalDto {
     icon: goal.icon,
     targetCents: goal.targetCents,
     savedCents: goal.savedCents,
+    installmentCents: goal.installmentCents,
     steps: GOAL_STEPS,
     currentStep: goalStep(goal.savedCents, goal.targetCents),
     chestsOpened: goal.chestsOpened,
@@ -77,6 +80,20 @@ export class GoalsService {
     return this.prisma.transaction(async (tx) => {
       const goal = await this.findOwned(tx, userId, id);
       const target = dto.targetCents ?? goal.targetCents;
+      // goalSchema's cross-field refine only sees the fields present in THIS
+      // request — a PATCH that sends only `installmentCents` (or only
+      // `targetCents`) never has both in the same payload, so it always
+      // skipped the check. Re-validate here against the merged (existing +
+      // incoming) state, which is the only place that actually has both.
+      const installment =
+        dto.installmentCents === undefined
+          ? goal.installmentCents
+          : dto.installmentCents;
+      if (installment !== null && installment > target) {
+        throw new BadRequestException(
+          'installmentCents: parcela não pode ser maior que a meta',
+        );
+      }
       const updated = await tx.goal.update({
         where: { id: goal.id },
         data: {

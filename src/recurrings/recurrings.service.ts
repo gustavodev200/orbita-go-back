@@ -14,7 +14,11 @@ import {
   dayToDate,
   monthOf,
 } from '../common/time/business-time';
-import type { Recurring, RecurringPayment } from '../generated/prisma/client';
+import {
+  Prisma,
+  type Recurring,
+  type RecurringPayment,
+} from '../generated/prisma/client';
 import type { AchievementKey } from '../gamification/catalog';
 import {
   GamificationService,
@@ -307,15 +311,31 @@ export class RecurringsService {
           recurringId: recurring.id,
         },
       });
-      const payment = await tx.recurringPayment.create({
-        data: {
-          recurringId: recurring.id,
-          period: occ.period,
-          dueDate: dayToDate(occ.dueDate),
-          onTime: today <= occ.dueDate,
-          transactionId: transaction.id,
-        },
-      });
+      let payment: RecurringPayment;
+      try {
+        payment = await tx.recurringPayment.create({
+          data: {
+            recurringId: recurring.id,
+            period: occ.period,
+            dueDate: dayToDate(occ.dueDate),
+            onTime: today <= occ.dueDate,
+            transactionId: transaction.id,
+          },
+        });
+      } catch (error) {
+        // Concurrent double-submit of "Paguei" (double click, two tabs) races
+        // past the `paid.has(occ.period)` check above — both read no payment
+        // yet — and the loser used to hit the (recurringId, period) unique
+        // constraint and surface as an unhandled 500 instead of the same 409
+        // a sequential double-pay already gets.
+        if (
+          error instanceof Prisma.PrismaClientKnownRequestError &&
+          error.code === 'P2002'
+        ) {
+          throw new ConflictException('Recorrente já paga neste período');
+        }
+        throw error;
+      }
 
       const unlock: AchievementKey[] = [];
       if (await this.threeMonthsOnTime(tx, userId, monthOf(today))) {

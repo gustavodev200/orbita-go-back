@@ -1,7 +1,14 @@
 {
   "extends": "./tsconfig.json",
   "compilerOptions": {
-    "rootDir": "./src"
+    "rootDir": "./src",
+    // nest-cli.json tem `deleteOutDir: true`, que apaga `dist/` inteiro antes de
+    // cada build. O tsbuildinfo padrão fica na raiz do projeto (fora de `dist`),
+    // então sobrevive ao deleteOutDir: o próximo build vê o cache "up to date"
+    // e não reemite nada, deixando `dist/` vazio mesmo com exit code 0. Colocando
+    // o tsbuildinfo dentro de `dist/`, ele é apagado junto e o cache nunca fica
+    // dessincronizado do outDir real.
+    "tsBuildInfoFile": "./dist/tsconfig.build.tsbuildinfo"
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]

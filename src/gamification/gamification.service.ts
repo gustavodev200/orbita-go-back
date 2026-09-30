@@ -57,6 +57,15 @@ export class GamificationService {
   ): Promise<Reward> {
     const xp = input.xp ?? 0;
     const coins = input.coins ?? 0;
+    // Row lock: this is the single chokepoint every reward-granting endpoint
+    // funnels through (transactions, tasks, goals, missions, streak, boss,
+    // onboarding). Without it, two concurrent awards for the same user (a
+    // double-click, a client retry, two tabs) both read the same xp/coins
+    // baseline and the loser's write clobbers the winner's — a lost update,
+    // silently dropping XP/coins rather than erroring. FOR UPDATE serializes
+    // concurrent awards for this user: the second call blocks until the
+    // first transaction commits, then reads the already-updated row.
+    await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
     const user = await tx.user.findUniqueOrThrow({ where: { id: userId } });
     const next = applyXp(user.level, user.xp, xp);
 
