@@ -1,0 +1,326 @@
+generator client {
+  provider   = "prisma-client"
+  output     = "../src/generated/prisma"
+  engineType = "client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Theme {
+  light
+  dark
+  system
+}
+
+enum TransactionType {
+  expense
+  income
+}
+
+enum Frequency {
+  monthly
+  weekly
+  yearly
+}
+
+enum Priority {
+  high
+  medium
+  low
+}
+
+enum ReminderKind {
+  finance
+  task
+}
+
+enum ReminderRepeat {
+  none
+  daily
+  weekly
+  monthly
+}
+
+/// Pessoa autenticada — id = `sub` do JWT do Supabase Auth (upsert no 1º request).
+/// Guarda também o estado de gamificação (nível, XP, moedas, ofensiva, loja).
+model User {
+  id                   String    @id @db.Uuid
+  email                String
+  name                 String?
+  avatarUrl            String?   @map("avatar_url")
+  onboarded            Boolean   @default(false)
+  level                Int       @default(1)
+  xp                   Int       @default(0)
+  coins                Int       @default(0)
+  streak               Int       @default(0)
+  streakRecord         Int       @default(0) @map("streak_record")
+  shields              Int       @default(0)
+  lastClosedDay        DateTime? @map("last_closed_day") @db.Date
+  theme                Theme     @default(system)
+  notificationsEnabled Boolean   @default(true) @map("notifications_enabled")
+  monthlyIncomeCents   Int?      @map("monthly_income_cents")
+  ownedItems           String[]  @default([]) @map("owned_items")
+  enabledCategoryKeys  String[]  @default([]) @map("enabled_category_keys")
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  accounts          Account[]
+  transactions      Transaction[]
+  recurrings        Recurring[]
+  budgets           Budget[]
+  goals             Goal[]
+  tasks             Task[]
+  reminders         Reminder[]
+  missions          MissionClaim[]
+  streakDays        StreakDay[]
+  bossStates        BossState[]
+  bossAttacks       BossAttack[]
+  achievements      UserAchievement[]
+  pushSubscriptions PushSubscription[]
+
+  @@map("users")
+}
+
+model Account {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  name      String
+  icon      String
+  /// Hex fixa por conta seedada (Nubank roxo, Itaú laranja, Carteira verde).
+  color     String   @default("#9A8C7E")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+  recurrings   Recurring[]
+
+  @@index([userId])
+  @@map("accounts")
+}
+
+model Transaction {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  type        TransactionType
+  amountCents Int             @map("amount_cents")
+  description String
+  categoryKey String          @map("category_key")
+  date        DateTime        @db.Date
+  accountId   String?         @map("account_id") @db.Uuid
+  recurringId String?         @map("recurring_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account   Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  recurring Recurring?        @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+  payment   RecurringPayment?
+
+  @@index([userId, date])
+  @@index([userId, createdAt])
+  @@map("transactions")
+}
+
+/// Conta/receita fixa. `startDate` ancora a 1ª ocorrência (e o mês das anuais);
+/// semanal usa `dueDay % 7` como dia da semana (0 = domingo).
+model Recurring {
+  id          String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String          @map("user_id") @db.Uuid
+  description String
+  amountCents Int             @map("amount_cents")
+  categoryKey String          @map("category_key")
+  type        TransactionType
+  frequency   Frequency
+  dueDay      Int             @map("due_day")
+  startDate   DateTime        @map("start_date") @db.Date
+  endDate     DateTime?       @map("end_date") @db.Date
+  accountId   String?         @map("account_id") @db.Uuid
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account      Account?           @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  payments     RecurringPayment[]
+  transactions Transaction[]
+  bossStates   BossState[]
+
+  @@index([userId])
+  @@map("recurrings")
+}
+
+/// Pagamento de uma ocorrência. `period`: YYYY-MM (mensal), YYYY (anual), YYYY-MM-DD (semanal).
+model RecurringPayment {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  recurringId   String   @map("recurring_id") @db.Uuid
+  period        String
+  dueDate       DateTime @map("due_date") @db.Date
+  onTime        Boolean  @map("on_time")
+  paidAt        DateTime @default(now()) @map("paid_at") @db.Timestamptz(6)
+  transactionId String?  @unique @map("transaction_id") @db.Uuid
+
+  recurring   Recurring    @relation(fields: [recurringId], references: [id], onDelete: Cascade)
+  transaction Transaction? @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  @@unique([recurringId, period])
+  @@map("recurring_payments")
+}
+
+model Budget {
+  id          String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String @map("user_id") @db.Uuid
+  categoryKey String @map("category_key")
+  limitCents  Int    @map("limit_cents")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, categoryKey])
+  @@map("budgets")
+}
+
+/// Meta em trilha de 10 passos; baús após os passos 3 e 7 (`chestsOpened`).
+model Goal {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  name         String
+  icon         String
+  targetCents  Int       @map("target_cents")
+  savedCents   Int       @default(0) @map("saved_cents")
+  chestsOpened Int[]     @default([]) @map("chests_opened")
+  /// Prazo opcional definido pelo usuário, formato YYYY-MM (mês/ano — não dia).
+  deadline     String?
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("goals")
+}
+
+model Task {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  title      String
+  dueDate    DateTime? @map("due_date") @db.Date
+  priority   Priority  @default(medium)
+  reminderAt String?   @map("reminder_at")
+  done       Boolean   @default(false)
+  doneAt     DateTime? @map("done_at") @db.Timestamptz(6)
+  /// XP de conclusão é pago uma única vez por tarefa (evita farm com complete/uncomplete).
+  xpAwarded  Boolean   @default(false) @map("xp_awarded")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("tasks")
+}
+
+model Reminder {
+  id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  title       String
+  kind        ReminderKind
+  time        String
+  repeat      ReminderRepeat
+  dayOfMonth  Int?           @map("day_of_month")
+  weekday     Int?
+  date        DateTime?      @db.Date
+  enabled     Boolean        @default(true)
+  /// Dedupe do cron de push: última vez que essa ocorrência foi disparada.
+  lastFiredAt DateTime?      @map("last_fired_at") @db.Timestamptz(6)
+  createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("reminders")
+}
+
+/// Inscrição de Web Push de um dispositivo/navegador (endpoint = identidade única).
+model PushSubscription {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model MissionClaim {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  missionKey String   @map("mission_key")
+  day        DateTime @db.Date
+  claimedAt  DateTime @default(now()) @map("claimed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, missionKey, day])
+  @@map("mission_claims")
+}
+
+/// Dia fechado (ofensiva). `shielded` = dia salvo por escudo.
+model StreakDay {
+  id       String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId   String   @map("user_id") @db.Uuid
+  day      DateTime @db.Date
+  shielded Boolean  @default(false)
+  closedAt DateTime @default(now()) @map("closed_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, day])
+  @@map("streak_days")
+}
+
+/// Chefão do mês: snapshot da maior recorrente de saída no 1º acesso do mês.
+model BossState {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  month       String
+  name        String
+  icon        String
+  maxHpCents  Int       @map("max_hp_cents")
+  damageCents Int       @default(0) @map("damage_cents")
+  /// Recorrente de origem do snapshot — permite calcular o `dueDate` do mês.
+  recurringId String?   @map("recurring_id") @db.Uuid
+  defeatedAt  DateTime? @map("defeated_at") @db.Timestamptz(6)
+
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  recurring Recurring? @relation(fields: [recurringId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, month])
+  @@map("boss_states")
+}
+
+model BossAttack {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  month       String
+  amountCents Int      @map("amount_cents")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, month])
+  @@map("boss_attacks")
+}
+
+model UserAchievement {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  achievementKey String   @map("achievement_key")
+  unlockedAt     DateTime @default(now()) @map("unlocked_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, achievementKey])
+  @@map("user_achievements")
+}

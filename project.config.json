@@ -1,0 +1,14 @@
+{
+  "$schema": "./project.config.schema.json",
+  "project": "orbita-go-back",
+  "preset": "prisma-postgres",
+
+  "frontend": null,
+  "backend": "nestjs",
+  "database": "prisma-postgres",
+  "auth": "supabase-auth",
+  "email": null,
+  "storage": null,
+
+  "notes": "Backend puro (API para o front Next.js do órbitaGO, repositório separado). Desvio pontual documentado (ver .claude/skills/core/stack-detection/SKILL.md#desvios-pontuais): preset prisma-postgres (Nest + Prisma são donos do acesso a dado), mas auth é 'supabase-auth' — login social apenas com Google, delegado ao Supabase Auth (GoTrue) no free tier, compartilhado com o front. O Nest nunca faz login: só valida o JWT emitido pelo Supabase num AuthGuard global (JWKS assimétrico ou segredo HS256 legado) e faz upsert do User por `sub`. Prisma conecta direto no Postgres do mesmo projeto Supabase (DATABASE_URL pooled em runtime, DIRECT_URL para migrations) — não usa supabase-js/PostgREST, então RLS não é a camada de autorização do Nest (autorização fica no service, sempre filtrando por userId); RLS habilitada sem policies em todas as tabelas como defesa em profundidade (bloqueia acesso via PostgREST com anon/authenticated). Deploy: Vercel (serverless functions), free tier."
+}

@@ -1,0 +1,23 @@
+name: Dispatch reminders
+
+# Back roda serverless (Vercel) e não tem processo de fundo próprio — este cron
+# chama o endpoint interno a cada 5 min para disparar os lembretes (Web Push)
+# cujo horário bateu com "agora". Requer os secrets do repo API_URL e CRON_SECRET
+# (mesmo valor da env CRON_SECRET do deploy) — ver README para configurar.
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Chamar /internal/dispatch-reminders
+        run: |
+          curl --fail --silent --show-error \
+            -X POST "$API_URL/internal/dispatch-reminders" \
+            -H "X-Cron-Secret: $CRON_SECRET"
+        env:
+          API_URL: ${{ secrets.API_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

@@ -1,3 +1,80 @@
+# órbitaGO — API (orbita-go-back)
+
+API do órbitaGO (finanças + tarefas gamificado): **NestJS + Prisma + Postgres do
+Supabase + Supabase Auth (apenas Google)**. O back nunca faz login: valida o JWT
+emitido pelo Supabase (JWKS assimétrico ou segredo HS256 legado) num guard global
+e faz upsert do `User` por `sub`. Contrato de rotas: `../API_CONTRACT.md`.
+
+- Porta `3333`, sem prefixo global, CORS para `FRONTEND_URL`.
+- Fuso de negócio `America/Sao_Paulo` ("hoje", ofensiva, missões, vencimentos).
+- Toda rota que premia responde `{ data, reward }`; `GamificationService.award()`
+  aplica XP/moedas, level-up (1500 XP, excedente carrega) e conquistas na mesma
+  transação da ação.
+- Módulos: `users` (/me), `onboarding`, `categories`, `accounts`, `transactions`,
+  `recurrings`, `budgets`, `goals`, `tasks`, `reminders`, `push` (Web Push),
+  `internal` (cron de disparo), `gamification`
+  (missões, ofensiva, chefão, conquistas, loja, stats), `health`.
+- Swagger em `GET /docs` (desligue com `SWAGGER_ENABLED=false`).
+
+## Setup
+
+1. **Supabase (free tier):** crie um projeto em <https://supabase.com>.
+2. **Google:** Authentication > Sign In / Providers > Google > habilite e cole o
+   Client ID/Secret de um OAuth Client do Google Cloud (tipo "Web application",
+   redirect URI `https://<PROJECT_REF>.supabase.co/auth/v1/callback`). Em
+   Authentication > URL Configuration, adicione a URL do front (ex.:
+   `http://localhost:3000`) em Site URL / Redirect URLs.
+3. **Env:** `cp .env.example .env` e preencha:
+   - `SUPABASE_URL` — Project Settings > API.
+   - `SUPABASE_JWT_SECRET` — opcional, só se o projeto ainda assina com o
+     segredo legado HS256 (Project Settings > JWT Keys). Com chaves assimétricas,
+     deixe vazio (valida via JWKS).
+   - `DATABASE_URL` — Connect > Transaction pooler (porta 6543,
+     `?pgbouncer=true&connection_limit=1`).
+   - `DIRECT_URL` — Connect > Session pooler (5432) ou conexão direta; usado só
+     pelo `prisma migrate`.
+   - `FRONTEND_URL` (default `http://localhost:3000`, aceita lista por vírgula),
+     `PORT` (default `3333`), `SWAGGER_ENABLED`.
+   - `VAPID_PUBLIC_KEY` / `VAPID_PRIVATE_KEY` / `VAPID_SUBJECT` — par de chaves
+     para Web Push (gerar com `npx web-push generate-vapid-keys`; a public key
+     também vai pro front como `NEXT_PUBLIC_VAPID_PUBLIC_KEY`).
+   - `CRON_SECRET` — segredo do cron externo (ver seção "Lembretes por push"
+     abaixo).
+4. **Instalar e migrar:**
+   ```bash
+   npm install
+   npx prisma generate
+   npx prisma migrate deploy
+   ```
+   A migration inicial cria todas as tabelas e liga **RLS sem policies** em
+   todas (defesa em profundidade: a Data API/PostgREST do Supabase não enxerga
+   nada; o Prisma usa a role dona das tabelas e a autorização fica nos services,
+   sempre filtrando por `userId`).
+5. **Rodar:** `npm run start:dev` → <http://localhost:3333/health>.
+
+Scripts: `npm run build`, `npm run lint`, `npm test`.
+Deploy: Vercel (`api/index.ts` + `vercel.json`), com as mesmas env vars.
+
+### Lembretes por push (Web Push)
+
+O back roda serverless (Vercel), sem processo de fundo — quem "acorda" o envio
+dos lembretes é um cron externo. `POST /internal/dispatch-reminders` varre os
+lembretes habilitados, dispara Web Push (lib `web-push`, chaves VAPID acima)
+pros dispositivos inscritos via `POST/DELETE /push/subscribe`, e é protegido
+pelo header `X-Cron-Secret` (não é rota de usuário — não passa pelo guard de
+JWT). `.github/workflows/dispatch-reminders.yml` já chama essa rota a cada 5
+min; para funcionar após o deploy, configure em **Settings > Secrets and
+variables > Actions** do repositório do GitHub:
+
+- `API_URL` — URL pública do back em produção (ex.: `https://orbita-go-back.vercel.app`).
+- `CRON_SECRET` — mesmo valor da env `CRON_SECRET` configurada no deploy.
+
+Sem esses secrets o workflow falha, mas isso não bloqueia o desenvolvimento
+local: rode `curl -X POST localhost:3333/internal/dispatch-reminders -H "X-Cron-Secret: $CRON_SECRET"`
+manualmente quando quiser testar o disparo.
+
+---
+
 # workspace-agents
 
 Workspace/template pessoal para desenvolvimento de software com agentes de
