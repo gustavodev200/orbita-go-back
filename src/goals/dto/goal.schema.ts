@@ -22,10 +22,22 @@ const installmentFitsTarget = (v: {
   v.targetCents == null ||
   v.installmentCents <= v.targetCents;
 
-export const goalSchema = goalShape.strict().refine(installmentFitsTarget, {
-  message: 'parcela não pode ser maior que a meta',
-  path: ['installmentCents'],
-});
+export const goalSchema = goalShape
+  .extend({
+    // Quanto o usuário já tinha guardado antes de criar a meta no app (backfill,
+    // não é um depósito — não gera XP/conquista). Ausente = começa do zero
+    // (coluna não aceita null, só omitir usa o default do banco).
+    savedCents: centsSchema.optional(),
+  })
+  .strict()
+  .refine(installmentFitsTarget, {
+    message: 'parcela não pode ser maior que a meta',
+    path: ['installmentCents'],
+  })
+  .refine((v) => v.savedCents == null || v.savedCents <= v.targetCents, {
+    message: 'valor guardado não pode ser maior que a meta',
+    path: ['savedCents'],
+  });
 export type GoalInput = z.infer<typeof goalSchema>;
 
 export const updateGoalSchema = goalShape

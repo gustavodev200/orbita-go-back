@@ -69,7 +69,13 @@ export class GoalsService {
   }
 
   createInTx(tx: Tx, userId: string, dto: GoalInput): Promise<Goal> {
-    return tx.goal.create({ data: { userId, ...dto } });
+    // Backfill de "já tenho guardado": se já nasce cheia, marca concluída na
+    // hora (sem XP/conquista — isso não passou pelo fluxo de depósito).
+    const completedAt =
+      dto.savedCents != null && dto.savedCents >= dto.targetCents
+        ? new Date()
+        : null;
+    return tx.goal.create({ data: { userId, ...dto, completedAt } });
   }
 
   async update(
