@@ -150,6 +150,20 @@ export class RemindersService {
     });
   }
 
+  /**
+   * Exclusão em lote do próprio usuário. Lembretes espelho de tarefa
+   * (`taskId`) ficam de fora: são controlados pela própria tarefa.
+   */
+  async removeMany(
+    userId: string,
+    ids: string[],
+  ): Promise<{ deleted: number }> {
+    const { count } = await this.prisma.db.reminder.deleteMany({
+      where: { userId, taskId: null, id: { in: ids } },
+    });
+    return { deleted: count };
+  }
+
   private async findOwned(
     tx: Tx,
     userId: string,

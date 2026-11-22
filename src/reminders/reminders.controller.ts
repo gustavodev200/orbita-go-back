@@ -15,7 +15,9 @@ import {
 } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
+  bulkIdsSchema,
   textParseSchema,
+  type BulkIdsInput,
   uuidParamSchema,
   type TextParseInput,
 } from '../common/schemas/common.schema';
@@ -50,6 +52,15 @@ export class RemindersController {
     @Body(new ZodValidationPipe(createReminderSchema)) dto: CreateReminderInput,
   ) {
     return this.reminders.create(user.id, dto);
+  }
+
+  @Post('bulk-delete')
+  @HttpCode(200)
+  removeMany(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) dto: BulkIdsInput,
+  ) {
+    return this.reminders.removeMany(user.id, dto.ids);
   }
 
   @Patch(':id')

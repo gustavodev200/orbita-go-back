@@ -148,6 +148,17 @@ export class TasksService {
     });
   }
 
+  /** Exclusão em lote — só remove tarefas do próprio usuário (ids alheios são ignorados). */
+  async removeMany(
+    userId: string,
+    ids: string[],
+  ): Promise<{ deleted: number }> {
+    const { count } = await this.prisma.db.task.deleteMany({
+      where: { userId, id: { in: ids } },
+    });
+    return { deleted: count };
+  }
+
   async complete(userId: string, id: string): Promise<Rewarded<TaskDto>> {
     return this.prisma.transaction(async (tx) => {
       const task = await this.findOwned(tx, userId, id);

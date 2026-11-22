@@ -14,7 +14,11 @@ import {
   type AuthenticatedUser,
 } from '../auth/current-user.decorator';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
-import { uuidParamSchema } from '../common/schemas/common.schema';
+import {
+  bulkIdsSchema,
+  uuidParamSchema,
+  type BulkIdsInput,
+} from '../common/schemas/common.schema';
 import {
   createTaskSchema,
   updateTaskSchema,
@@ -40,6 +44,15 @@ export class TasksController {
     @Body(new ZodValidationPipe(createTaskSchema)) dto: CreateTaskInput,
   ) {
     return this.tasks.create(user.id, dto);
+  }
+
+  @Post('bulk-delete')
+  @HttpCode(200)
+  removeMany(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(new ZodValidationPipe(bulkIdsSchema)) dto: BulkIdsInput,
+  ) {
+    return this.tasks.removeMany(user.id, dto.ids);
   }
 
   @Patch(':id')

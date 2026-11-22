@@ -26,3 +26,15 @@ export const textParseSchema = z.object({
   text: z.string().trim().min(1).max(300),
 });
 export type TextParseInput = z.infer<typeof textParseSchema>;
+
+/** Exclusão em lote: 1..200 uuids, repetidos removidos. */
+export const bulkIdsSchema = z
+  .object({
+    ids: z
+      .array(z.string().uuid('id inválido'))
+      .min(1)
+      .max(200)
+      .transform((ids) => [...new Set(ids)]),
+  })
+  .strict();
+export type BulkIdsInput = z.infer<typeof bulkIdsSchema>;
