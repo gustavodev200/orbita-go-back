@@ -85,6 +85,7 @@ model User {
   bossAttacks       BossAttack[]
   achievements      UserAchievement[]
   pushSubscriptions PushSubscription[]
+  habits            Habit[]
 
   @@map("users")
 }
@@ -340,4 +341,37 @@ model UserAchievement {
 
   @@unique([userId, achievementKey])
   @@map("user_achievements")
+}
+
+/// Hábito recorrente: marcado por dia nos `weekdays` (0 = domingo … 6 = sábado).
+/// `reminderTime` opcional dispara push só se o hábito do dia não foi marcado.
+model Habit {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  name         String
+  icon         String
+  color        String
+  weekdays     Int[]     @default([0, 1, 2, 3, 4, 5, 6])
+  reminderTime String?   @map("reminder_time")
+  /// Dedupe do cron de push (mesma regra de `Reminder.lastFiredAt`).
+  lastFiredAt  DateTime? @map("last_fired_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checks HabitCheck[]
+
+  @@index([userId])
+  @@map("habits")
+}
+
+model HabitCheck {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  habitId   String   @map("habit_id") @db.Uuid
+  day       DateTime @db.Date
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  habit Habit @relation(fields: [habitId], references: [id], onDelete: Cascade)
+
+  @@unique([habitId, day])
+  @@map("habit_checks")
 }

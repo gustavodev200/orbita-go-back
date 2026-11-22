@@ -9,6 +9,7 @@ import { CategoriesModule } from './categories/categories.module';
 import { validateEnv } from './common/config/env.schema';
 import { GamificationModule } from './gamification/gamification.module';
 import { GoalsModule } from './goals/goals.module';
+import { HabitsModule } from './habits/habits.module';
 import { HealthController } from './health/health.controller';
 import { InternalModule } from './internal/internal.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
     BudgetsModule,
     GoalsModule,
     TasksModule,
+    HabitsModule,
     RemindersModule,
     PushModule,
     InternalModule,
