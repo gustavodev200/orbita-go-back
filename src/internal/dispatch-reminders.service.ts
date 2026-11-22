@@ -3,6 +3,7 @@ import {
   businessDay,
   businessTime,
   dateToDay,
+  dayToDate,
 } from '../common/time/business-time';
 import type { Reminder } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -11,6 +12,7 @@ import {
   type PushPayload,
 } from '../push/push-sender.service';
 import { isInDispatchWindow, isReminderDueOn } from '../reminders/reminder-due';
+import { buildHabitPayload, isHabitDue } from './habit-due';
 
 /** Texto da notificação: o próprio lembrete é o título; o corpo diz quando. */
 export function buildReminderPayload(reminder: Reminder): PushPayload {
@@ -75,6 +77,47 @@ export class DispatchRemindersService {
       });
     }
 
+    dispatched += await this.dispatchHabits(now, today, nowTime);
     return { dispatched };
+  }
+
+  /** Hábitos com lembrete: só avisa os agendados hoje e ainda não marcados. */
+  private async dispatchHabits(
+    now: Date,
+    today: string,
+    nowTime: string,
+  ): Promise<number> {
+    const habits = await this.prisma.db.habit.findMany({
+      where: { reminderTime: { not: null, lte: nowTime } },
+      include: { checks: { where: { day: dayToDate(today) } } },
+    });
+
+    let dispatched = 0;
+    for (const habit of habits) {
+      const lastFiredDay = habit.lastFiredAt
+        ? businessDay(habit.lastFiredAt)
+        : null;
+      if (
+        !isHabitDue(
+          habit,
+          habit.checks.length > 0,
+          today,
+          nowTime,
+          lastFiredDay,
+        )
+      ) {
+        continue;
+      }
+      const delivered = await this.sender.sendToUser(
+        habit.userId,
+        buildHabitPayload(habit),
+      );
+      if (delivered > 0) dispatched += 1;
+      await this.prisma.db.habit.update({
+        where: { id: habit.id },
+        data: { lastFiredAt: now },
+      });
+    }
+    return dispatched;
   }
 }
