@@ -1,4 +1,8 @@
-import { isReminderDueOn, type ReminderSchedule } from './reminder-due';
+import {
+  isInDispatchWindow,
+  isReminderDueOn,
+  type ReminderSchedule,
+} from './reminder-due';
 
 const base: ReminderSchedule = {
   repeat: 'daily',
@@ -87,5 +91,28 @@ describe('isReminderDueOn', () => {
     expect(
       isReminderDueOn({ ...base, repeat: 'none', date: null }, '2026-09-29'),
     ).toBe(false);
+  });
+});
+
+describe('isInDispatchWindow', () => {
+  it('dispara no minuto exato', () => {
+    expect(isInDispatchWindow('09:00', '09:00')).toBe(true);
+  });
+
+  it('recupera lembrete atrasado dentro da janela (cron a cada 5 min)', () => {
+    expect(isInDispatchWindow('09:03', '09:05')).toBe(true);
+    expect(isInDispatchWindow('09:00', '09:30')).toBe(true);
+  });
+
+  it('não dispara antes do horário', () => {
+    expect(isInDispatchWindow('09:06', '09:05')).toBe(false);
+  });
+
+  it('não dispara fora da janela', () => {
+    expect(isInDispatchWindow('09:00', '09:31')).toBe(false);
+  });
+
+  it('não atravessa a meia-noite', () => {
+    expect(isInDispatchWindow('23:50', '00:05')).toBe(false);
   });
 });

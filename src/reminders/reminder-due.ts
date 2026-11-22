@@ -34,3 +34,28 @@ export function isReminderDueOn(
       return false;
   }
 }
+
+/** Quantos minutos para trás o cron ainda "recupera" um lembrete atrasado. */
+export const DISPATCH_WINDOW_MINUTES = 30;
+
+function toMinutes(hhmm: string): number {
+  const [h, m] = hhmm.split(':').map(Number);
+  return h * 60 + m;
+}
+
+/**
+ * O horário do lembrete (HH:mm) já chegou e está dentro da janela de
+ * recuperação até `now` (HH:mm)? O cron roda a cada ~5 min e pode atrasar,
+ * então exigir o minuto exato fazia quase todo lembrete nunca disparar. A
+ * janela não atravessa a meia-noite: um lembrete de 23:50 só vale no próprio
+ * dia (o dedupe por `lastFiredAt` impede disparo duplo dentro do dia).
+ */
+export function isInDispatchWindow(
+  time: string,
+  now: string,
+  windowMinutes: number = DISPATCH_WINDOW_MINUTES,
+): boolean {
+  const t = toMinutes(time);
+  const n = toMinutes(now);
+  return t <= n && n - t <= windowMinutes;
+}

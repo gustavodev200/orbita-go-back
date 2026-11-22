@@ -26,6 +26,8 @@ export interface ReminderDto {
   weekday?: number;
   date?: string;
   enabled: boolean;
+  /** Presente quando o lembrete espelha `Task.reminderAt`. */
+  taskId?: string;
 }
 
 function toDto(reminder: Reminder): ReminderDto {
@@ -39,6 +41,7 @@ function toDto(reminder: Reminder): ReminderDto {
     weekday: reminder.weekday ?? undefined,
     date: reminder.date ? dateToDay(reminder.date) : undefined,
     enabled: reminder.enabled,
+    taskId: reminder.taskId ?? undefined,
   };
 }
 
