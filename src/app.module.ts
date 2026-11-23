@@ -3,15 +3,18 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { AccountsModule } from './accounts/accounts.module';
+import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { AuthModule } from './auth/auth.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { CategoriesModule } from './categories/categories.module';
 import { validateEnv } from './common/config/env.schema';
+import { FlashcardsModule } from './flashcards/flashcards.module';
 import { GamificationModule } from './gamification/gamification.module';
 import { GoalsModule } from './goals/goals.module';
 import { HabitsModule } from './habits/habits.module';
 import { HealthController } from './health/health.controller';
 import { InternalModule } from './internal/internal.module';
+import { McpModule } from './mcp/mcp.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PushModule } from './push/push.module';
@@ -38,6 +41,9 @@ import { UsersModule } from './users/users.module';
     GoalsModule,
     TasksModule,
     HabitsModule,
+    FlashcardsModule,
+    ApiTokensModule,
+    McpModule,
     RemindersModule,
     PushModule,
     InternalModule,
