@@ -1052,7 +1052,7 @@ describe('órbitaGO e2e walkthrough', () => {
   // ---------------------------------------------------------------------
   // Push
   // ---------------------------------------------------------------------
-  const pushEndpoint = `https://push.example.invalid/ep-${userA.id}`;
+  const pushEndpoint = `https://fcm.googleapis.com/fcm/send/e2e-ep-${userA.id}`;
 
   describe('push', () => {
     it('subscribe then re-subscribe to the same endpoint upserts (no duplicate row)', async () => {
@@ -1089,7 +1089,7 @@ describe('órbitaGO e2e walkthrough', () => {
   describe('internal/dispatch-reminders', () => {
     const cronSecret = process.env.CRON_SECRET as string;
     let liveReminderId: string;
-    const livePushEndpoint = `https://push.example.invalid/dispatch-${userA.id}`;
+    const livePushEndpoint = `https://fcm.googleapis.com/fcm/send/e2e-dispatch-${userA.id}`;
 
     beforeAll(() => {
       expect(cronSecret).toBeTruthy();
@@ -1117,10 +1117,13 @@ describe('órbitaGO e2e walkthrough', () => {
         .expect(201);
       liveReminderId = reminderRes.body.id;
 
-      await http.post('/push/subscribe').send({
-        endpoint: livePushEndpoint,
-        keys: { p256dh: 'p256dh-fake', auth: 'auth-fake' },
-      });
+      await http
+        .post('/push/subscribe')
+        .send({
+          endpoint: livePushEndpoint,
+          keys: { p256dh: 'p256dh-fake', auth: 'auth-fake' },
+        })
+        .expect(201);
 
       const res = await http
         .post('/internal/dispatch-reminders')
