@@ -7,6 +7,7 @@ import { ApiTokensModule } from './api-tokens/api-tokens.module';
 import { AuthModule } from './auth/auth.module';
 import { BudgetsModule } from './budgets/budgets.module';
 import { CategoriesModule } from './categories/categories.module';
+import { ChallengesModule } from './challenges/challenges.module';
 import { validateEnv } from './common/config/env.schema';
 import { FlashcardsModule } from './flashcards/flashcards.module';
 import { GamificationModule } from './gamification/gamification.module';
@@ -15,12 +16,14 @@ import { HabitsModule } from './habits/habits.module';
 import { HealthController } from './health/health.controller';
 import { InternalModule } from './internal/internal.module';
 import { McpModule } from './mcp/mcp.module';
+import { ObjectivesModule } from './objectives/objectives.module';
 import { OnboardingModule } from './onboarding/onboarding.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { PushModule } from './push/push.module';
 import { RecurringsModule } from './recurrings/recurrings.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { TasksModule } from './tasks/tasks.module';
+import { TimelineModule } from './timeline/timeline.module';
 import { TransactionsModule } from './transactions/transactions.module';
 import { UsersModule } from './users/users.module';
 
@@ -41,6 +44,9 @@ import { UsersModule } from './users/users.module';
     GoalsModule,
     TasksModule,
     HabitsModule,
+    ObjectivesModule,
+    ChallengesModule,
+    TimelineModule,
     FlashcardsModule,
     ApiTokensModule,
     McpModule,

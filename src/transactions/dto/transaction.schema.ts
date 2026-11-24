@@ -50,3 +50,9 @@ export const listTransactionsQuerySchema = z.object({
   category: categoryKeySchema.optional(),
 });
 export type ListTransactionsQuery = z.infer<typeof listTransactionsQuerySchema>;
+
+/** Evolução: quantos meses (terminando no mês atual) devolver. */
+export const evolutionQuerySchema = z.object({
+  months: z.coerce.number().int().min(1).max(24).default(12),
+});
+export type EvolutionQuery = z.infer<typeof evolutionQuerySchema>;

@@ -49,6 +49,18 @@ enum GoalFrequency {
   monthly
 }
 
+enum ObjectiveHorizon {
+  short
+  medium
+  long
+}
+
+enum LifeEventKind {
+  achievement
+  project
+  milestone
+}
+
 /// Pessoa autenticada — id = `sub` do JWT do Supabase Auth (upsert no 1º request).
 /// Guarda também o estado de gamificação (nível, XP, moedas, ofensiva, loja).
 model User {
@@ -88,6 +100,9 @@ model User {
   habits            Habit[]
   flashcards        Flashcard[]
   apiTokens         ApiToken[]
+  objectives        Objective[]
+  challenges        Challenge[]
+  lifeEvents        LifeEvent[]
 
   @@map("users")
 }
@@ -189,24 +204,24 @@ model Budget {
 
 /// Meta em trilha de 10 passos; baús após os passos 3 e 7 (`chestsOpened`).
 model Goal {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId       String    @map("user_id") @db.Uuid
-  name         String
-  icon         String
-  targetCents  Int       @map("target_cents")
-  savedCents   Int       @default(0) @map("saved_cents")
+  id               String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String         @map("user_id") @db.Uuid
+  name             String
+  icon             String
+  targetCents      Int            @map("target_cents")
+  savedCents       Int            @default(0) @map("saved_cents")
   /// Quanto guardar por vez (sugestão da trilha). Nulo = gerado (target/10).
-  installmentCents Int?  @map("installment_cents")
-  chestsOpened Int[]     @default([]) @map("chests_opened")
+  installmentCents Int?           @map("installment_cents")
+  chestsOpened     Int[]          @default([]) @map("chests_opened")
   /// Prazo opcional definido pelo usuário, formato YYYY-MM (mês/ano — não dia).
-  deadline     String?
+  deadline         String?
   /// Cadência dos aportes sugeridos (só usada com `deadline`); nulo = trilha por dinheiro (10 passos fixos).
-  frequency    GoalFrequency?
+  frequency        GoalFrequency?
   /// Data (YYYY-MM-DD) de onde a trilha por data começa a contar; reseta pra hoje sempre que
   /// targetCents, deadline ou frequency mudam — é isso que "regenera" a trilha.
-  trailStartDate String? @map("trail_start_date")
-  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
-  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  trailStartDate   String?        @map("trail_start_date")
+  completedAt      DateTime?      @map("completed_at") @db.Timestamptz(6)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -215,20 +230,23 @@ model Goal {
 }
 
 model Task {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  title      String
-  dueDate    DateTime? @map("due_date") @db.Date
-  priority   Priority  @default(medium)
-  reminderAt String?   @map("reminder_at")
-  done       Boolean   @default(false)
-  doneAt     DateTime? @map("done_at") @db.Timestamptz(6)
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String    @map("user_id") @db.Uuid
+  title       String
+  dueDate     DateTime? @map("due_date") @db.Date
+  priority    Priority  @default(medium)
+  reminderAt  String?   @map("reminder_at")
+  done        Boolean   @default(false)
+  doneAt      DateTime? @map("done_at") @db.Timestamptz(6)
   /// XP de conclusão é pago uma única vez por tarefa (evita farm com complete/uncomplete).
-  xpAwarded  Boolean   @default(false) @map("xp_awarded")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  xpAwarded   Boolean   @default(false) @map("xp_awarded")
+  /// Meta (Objective) a que a tarefa contribui; conta no % de conclusão da meta.
+  objectiveId String?   @map("objective_id") @db.Uuid
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  reminder Reminder?
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder  Reminder?
+  objective Objective? @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@map("tasks")
@@ -357,10 +375,13 @@ model Habit {
   reminderTime String?   @map("reminder_time")
   /// Dedupe do cron de push (mesma regra de `Reminder.lastFiredAt`).
   lastFiredAt  DateTime? @map("last_fired_at") @db.Timestamptz(6)
+  /// Meta (Objective) que o hábito sustenta (não entra no %; mostra consistência).
+  objectiveId  String?   @map("objective_id") @db.Uuid
   createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  user   User         @relation(fields: [userId], references: [id], onDelete: Cascade)
-  checks HabitCheck[]
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checks    HabitCheck[]
+  objective Objective?   @relation(fields: [objectiveId], references: [id], onDelete: SetNull)
 
   @@index([userId])
   @@map("habits")
@@ -428,4 +449,98 @@ model ApiToken {
 
   @@index([userId])
   @@map("api_tokens")
+}
+
+/// Meta geral (Goals & OKRs) — diferente de `Goal`, que é meta de economia.
+/// % de conclusão = (etapas feitas + tarefas vinculadas feitas) / (etapas + tarefas vinculadas).
+model Objective {
+  id             String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  title          String
+  /// Por que essa meta importa (motivação).
+  why            String?
+  /// Resultado esperado / key result ("conversar 30 min sem travar").
+  expectedResult String?          @map("expected_result")
+  horizon        ObjectiveHorizon
+  deadline       DateTime?        @db.Date
+  icon           String
+  color          String
+  completedAt    DateTime?        @map("completed_at") @db.Timestamptz(6)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user       User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  milestones ObjectiveMilestone[]
+  tasks      Task[]
+  habits     Habit[]
+
+  @@index([userId])
+  @@map("objectives")
+}
+
+/// Etapa de uma meta (dividir objetivos grandes em pequenas entregas).
+model ObjectiveMilestone {
+  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  objectiveId String    @map("objective_id") @db.Uuid
+  title       String
+  done        Boolean   @default(false)
+  doneAt      DateTime? @map("done_at") @db.Timestamptz(6)
+  position    Int       @default(0)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  objective Objective @relation(fields: [objectiveId], references: [id], onDelete: Cascade)
+
+  @@index([objectiveId])
+  @@map("objective_milestones")
+}
+
+/// Desafio de N dias (7, 21 ou 30) com check-in diário.
+model Challenge {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  title        String
+  why          String?
+  durationDays Int       @map("duration_days")
+  startDate    DateTime  @map("start_date") @db.Date
+  icon         String
+  color        String
+  /// Todos os dias cumpridos.
+  completedAt  DateTime? @map("completed_at") @db.Timestamptz(6)
+  /// A pessoa desistiu (mantém o histórico).
+  abandonedAt  DateTime? @map("abandoned_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user   User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  checks ChallengeCheck[]
+
+  @@index([userId])
+  @@map("challenges")
+}
+
+model ChallengeCheck {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  challengeId String   @map("challenge_id") @db.Uuid
+  day         DateTime @db.Date
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  challenge Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, day])
+  @@map("challenge_checks")
+}
+
+/// Evento da linha do tempo registrado à mão (conquista, projeto concluído, marco da vida).
+model LifeEvent {
+  id          String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String        @map("user_id") @db.Uuid
+  title       String
+  description String?
+  date        DateTime      @db.Date
+  kind        LifeEventKind
+  icon        String
+  createdAt   DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, date])
+  @@map("life_events")
 }

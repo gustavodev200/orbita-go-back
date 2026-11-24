@@ -27,3 +27,29 @@ export function habitStreak(
   }
   return streak;
 }
+
+/**
+ * Maior sequência de dias agendados marcados entre `from` e `today`
+ * (inclusive). Mesma regra de `habitStreak`: dias fora de `weekdays` são
+ * pulados; hoje agendado e ainda não marcado não quebra a sequência.
+ */
+export function habitBestStreak(
+  weekdays: number[],
+  checked: Set<string>,
+  from: string,
+  today: string,
+): number {
+  const scheduled = new Set(weekdays);
+  let best = 0;
+  let run = 0;
+  for (let day = from; day <= today; day = addDays(day, 1)) {
+    if (!scheduled.has(weekdayOf(day))) continue;
+    if (checked.has(day)) {
+      run += 1;
+      best = Math.max(best, run);
+    } else if (day !== today) {
+      run = 0;
+    }
+  }
+  return best;
+}

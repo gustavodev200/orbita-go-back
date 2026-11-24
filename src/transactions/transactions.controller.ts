@@ -24,9 +24,11 @@ import {
 } from '../common/schemas/common.schema';
 import {
   createTransactionSchema,
+  evolutionQuerySchema,
   listTransactionsQuerySchema,
   updateTransactionSchema,
   type CreateTransactionInput,
+  type EvolutionQuery,
   type ListTransactionsQuery,
   type UpdateTransactionInput,
 } from './dto/transaction.schema';
@@ -53,6 +55,14 @@ export class TransactionsController {
     @Query(new ZodValidationPipe(monthQuerySchema)) query: MonthQuery,
   ) {
     return this.transactions.summary(user.id, query.month);
+  }
+
+  @Get('evolution')
+  evolution(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(new ZodValidationPipe(evolutionQuerySchema)) query: EvolutionQuery,
+  ) {
+    return this.transactions.evolution(user.id, query.months);
   }
 
   @Post('parse')

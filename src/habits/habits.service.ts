@@ -12,10 +12,10 @@ import {
 import type { Habit, HabitCheck } from '../generated/prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import type { CreateHabitInput, UpdateHabitInput } from './dto/habit.schema';
-import { habitStreak } from './habit-streak';
+import { habitBestStreak, habitStreak } from './habit-streak';
 
 /** Quantos dias de marcações o GET devolve (inclui hoje). */
-const CHECK_WINDOW_DAYS = 35;
+const CHECK_WINDOW_DAYS = 91;
 /** Quantos dias o cálculo de sequência olha para trás. */
 const STREAK_WINDOW_DAYS = 400;
 
@@ -28,10 +28,16 @@ export interface HabitDto {
   reminderTime: string | null;
   checks: string[];
   streak: number;
+  /** Maior sequência na janela de `STREAK_WINDOW_DAYS`. */
+  bestStreak: number;
+  /** Dia (YYYY-MM-DD) em que o hábito foi criado — base da taxa de consistência. */
+  createdAt: string;
+  objectiveId: string | null;
 }
 
 function toDto(habit: Habit, checks: HabitCheck[], today: string): HabitDto {
   const days = checks.map((c) => dateToDay(c.day));
+  const checked = new Set(days);
   const from = addDays(today, -(CHECK_WINDOW_DAYS - 1));
   return {
     id: habit.id,
@@ -41,7 +47,15 @@ function toDto(habit: Habit, checks: HabitCheck[], today: string): HabitDto {
     weekdays: habit.weekdays,
     reminderTime: habit.reminderTime,
     checks: days.filter((d) => d >= from && d <= today).sort(),
-    streak: habitStreak(habit.weekdays, new Set(days), today),
+    streak: habitStreak(habit.weekdays, checked, today),
+    bestStreak: habitBestStreak(
+      habit.weekdays,
+      checked,
+      addDays(today, -(STREAK_WINDOW_DAYS - 1)),
+      today,
+    ),
+    createdAt: businessDay(habit.createdAt),
+    objectiveId: habit.objectiveId,
   };
 }
 

@@ -7,6 +7,7 @@ import { AccountsService } from '../accounts/accounts.service';
 import { isCategoryOfType } from '../categories/categories';
 import { mapNotFound } from '../common/errors';
 import {
+  addMonths,
   businessDay,
   dateToDay,
   dayToDate,
@@ -63,6 +64,33 @@ export function toTransactionDto(t: Transaction): TransactionDto {
     recurringId: t.recurringId,
     createdAt: t.createdAt.toISOString(),
   };
+}
+
+export interface MonthTotals {
+  month: string;
+  incomeCents: number;
+  expenseCents: number;
+}
+
+/** Agrega lançamentos em `months` baldes mensais a partir de `first` (YYYY-MM). */
+export function monthlyTotals(
+  rows: { type: 'income' | 'expense'; amountCents: number; date: Date }[],
+  first: string,
+  months: number,
+): MonthTotals[] {
+  const buckets = Array.from({ length: months }, (_, i) => ({
+    month: addMonths(first, i),
+    incomeCents: 0,
+    expenseCents: 0,
+  }));
+  const index = new Map(buckets.map((b, i) => [b.month, i]));
+  for (const row of rows) {
+    const i = index.get(row.date.toISOString().slice(0, 7));
+    if (i === undefined) continue;
+    if (row.type === 'income') buckets[i].incomeCents += row.amountCents;
+    else buckets[i].expenseCents += row.amountCents;
+  }
+  return buckets;
 }
 
 @Injectable()
@@ -210,6 +238,23 @@ export class TransactionsService {
       expenseCents,
       daily,
     };
+  }
+
+  /** Entradas e saídas por mês, dos últimos `months` meses até o atual (meses vazios = 0). */
+  async evolution(userId: string, months: number): Promise<MonthTotals[]> {
+    const current = monthOf(businessDay());
+    const first = addMonths(current, -(months - 1));
+    const rows = await this.prisma.db.transaction.findMany({
+      where: {
+        userId,
+        date: {
+          gte: monthDateRange(first).gte,
+          lt: monthDateRange(current).lt,
+        },
+      },
+      select: { type: true, amountCents: true, date: true },
+    });
+    return monthlyTotals(rows, first, months);
   }
 
   parse(text: string): ParsedTransaction {
