@@ -1,7 +1,7 @@
 // Toda regra de "hoje" (ofensiva, missões, status de recorrente) usa o fuso de negócio.
 export const BUSINESS_TZ = 'America/Sao_Paulo';
 // São Paulo não tem horário de verão desde 2019: offset fixo.
-const BUSINESS_UTC_OFFSET = '-03:00';
+export const BUSINESS_UTC_OFFSET = '-03:00';
 
 const dayFormatter = new Intl.DateTimeFormat('en-CA', {
   timeZone: BUSINESS_TZ,

@@ -11,9 +11,10 @@ import type {
   UpdateFlashcardInput,
 } from './dto/flashcard.schema';
 import {
-  previewMinutes,
+  nextIntervals,
   schedule,
   SRS_STATES,
+  studyDayStart,
   type Rating,
   type SrsCard,
   type SrsState,
@@ -21,6 +22,8 @@ import {
 
 /** Teto do GET /flashcards — vocabulário pessoal, sem paginação por enquanto. */
 const LIST_LIMIT = 500;
+/** Cards novos liberados por dia de estudo (padrão do Anki). */
+const NEW_PER_DAY = 20;
 
 export interface FlashcardDto {
   id: string;
@@ -35,8 +38,8 @@ export interface FlashcardDto {
   intervalDays: number;
   /** Quando volta para a revisão; null = card novo. */
   dueAt: string | null;
-  /** Minutos até o card voltar, para cada botão de avaliação. */
-  nextIntervals: Record<Rating, number>;
+  /** Em quantos dias o card volta, para cada botão de avaliação. */
+  nextIntervalDays: Record<Rating, number>;
   createdAt: string;
 }
 
@@ -59,7 +62,7 @@ function srsOf(card: Flashcard): SrsCard {
   };
 }
 
-function toDto(card: Flashcard, now = new Date()): FlashcardDto {
+function toDto(card: Flashcard): FlashcardDto {
   const srs = srsOf(card);
   return {
     id: card.id,
@@ -73,7 +76,7 @@ function toDto(card: Flashcard, now = new Date()): FlashcardDto {
     state: srs.srsState,
     intervalDays: srs.intervalDays,
     dueAt: card.dueAt?.toISOString() ?? null,
-    nextIntervals: previewMinutes(srs, now),
+    nextIntervalDays: nextIntervals(srs),
     createdAt: card.createdAt.toISOString(),
   };
 }
@@ -99,13 +102,13 @@ export class FlashcardsService {
       orderBy: { createdAt: 'desc' },
       take: LIST_LIMIT,
     });
-    const now = new Date();
-    return cards.map((c) => toDto(c, now));
+    return cards.map((c) => toDto(c));
   }
 
   /**
    * Só o que venceu: primeiro os cards com revisão marcada (mais atrasados
-   * antes), depois os novos na ordem em que chegaram.
+   * antes), depois os novos na ordem em que chegaram — no máximo
+   * NEW_PER_DAY novos por dia de estudo, como no Anki.
    */
   async reviewQueue(userId: string, limit: number): Promise<FlashcardDto[]> {
     const now = new Date();
@@ -114,15 +117,36 @@ export class FlashcardsService {
       orderBy: { dueAt: 'asc' },
       take: limit,
     });
+    const room = limit - due.length;
     const fresh =
-      due.length < limit
-        ? await this.prisma.db.flashcard.findMany({
-            where: { userId, dueAt: null },
-            orderBy: { createdAt: 'asc' },
-            take: limit - due.length,
-          })
-        : [];
-    return [...due, ...fresh].map((c) => toDto(c, now));
+      room > 0 ? await this.newCardsForToday(userId, now, room) : [];
+    return [...due, ...fresh].map((c) => toDto(c));
+  }
+
+  /** Novos ainda liberados hoje (NEW_PER_DAY menos os estudados pela 1ª vez hoje). */
+  private async newCardsForToday(
+    userId: string,
+    now: Date,
+    room: number,
+  ): Promise<Flashcard[]> {
+    // Agendamento é em dias: card estudado pela 1ª vez hoje tem exatamente uma revisão.
+    const studiedToday = await this.prisma.db.flashcard.count({
+      where: {
+        userId,
+        lastReviewedAt: { gte: studyDayStart(now) },
+        OR: [
+          { correctCount: 1, wrongCount: 0 },
+          { correctCount: 0, wrongCount: 1 },
+        ],
+      },
+    });
+    const take = Math.min(room, NEW_PER_DAY - studiedToday);
+    if (take <= 0) return [];
+    return this.prisma.db.flashcard.findMany({
+      where: { userId, dueAt: null },
+      orderBy: { createdAt: 'asc' },
+      take,
+    });
   }
 
   /** Cria em lote ignorando pares pt/en repetidos (no lote ou já salvos). */
@@ -214,7 +238,7 @@ export class FlashcardsService {
         lastReviewedAt: now,
       },
     });
-    return toDto(card, now);
+    return toDto(card);
   }
 
   async remove(userId: string, id: string): Promise<FlashcardDto> {

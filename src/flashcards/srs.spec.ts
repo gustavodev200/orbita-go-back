@@ -1,64 +1,75 @@
-import { DEFAULT_SRS, previewMinutes, schedule, type SrsCard } from './srs';
+import {
+  DEFAULT_SRS,
+  nextIntervals,
+  schedule,
+  studyDay,
+  studyDayStart,
+  type SrsCard,
+} from './srs';
 
-const now = new Date('2026-11-24T12:00:00Z');
-const DAY_MIN = 1440;
+// 10h em São Paulo.
+const now = new Date('2026-11-24T13:00:00Z');
 
-describe('srs.previewMinutes', () => {
-  it('card novo: 1 min / 6 min / 10 min / 4 dias', () => {
-    expect(previewMinutes(DEFAULT_SRS, now)).toEqual({
+describe('srs.nextIntervals', () => {
+  it('card novo: 1 / 2 / 3 / 4 dias', () => {
+    expect(nextIntervals(DEFAULT_SRS)).toEqual({
       again: 1,
-      hard: 6,
-      good: 10,
-      easy: 4 * DAY_MIN,
+      hard: 2,
+      good: 3,
+      easy: 4,
     });
   });
 
-  it('no último passo de aprendizado, "Lembrei" forma o card em 1 dia', () => {
-    const learning: SrsCard = {
-      ...DEFAULT_SRS,
-      srsState: 'learning',
-      srsStep: 1,
-    };
-    expect(previewMinutes(learning, now)).toEqual({
-      again: 1,
-      hard: 10,
-      good: DAY_MIN,
-      easy: 4 * DAY_MIN,
-    });
-  });
-
-  it('card formado cresce pelo fator de facilidade', () => {
+  it('card aprendido cresce pela facilidade', () => {
     const review: SrsCard = {
       ...DEFAULT_SRS,
       srsState: 'review',
       intervalDays: 10,
     };
-    expect(previewMinutes(review, now)).toEqual({
-      again: 10,
-      hard: 12 * DAY_MIN,
-      good: 25 * DAY_MIN,
-      easy: 33 * DAY_MIN,
+    expect(nextIntervals(review)).toEqual({
+      again: 1,
+      hard: 12,
+      good: 25,
+      easy: 33,
     });
   });
 });
 
 describe('srs.schedule', () => {
-  it('esquecer card formado: reaprende, perde facilidade e metade do intervalo', () => {
+  it('vence às 4h do dia marcado, no fuso de São Paulo', () => {
+    const next = schedule(DEFAULT_SRS, 'good', now);
+    expect(next.dueAt.toISOString()).toBe('2026-11-27T07:00:00.000Z');
+    expect(next).toMatchObject({ srsState: 'review', intervalDays: 3 });
+  });
+
+  it('"Esqueci" em card novo: amanhã, sem mexer na facilidade', () => {
+    const next = schedule(DEFAULT_SRS, 'again', now);
+    expect(next).toMatchObject({
+      srsState: 'learning',
+      intervalDays: 1,
+      ease: 2.5,
+      lapses: 0,
+    });
+    expect(next.dueAt.toISOString()).toBe('2026-11-25T07:00:00.000Z');
+  });
+
+  it('"Esqueci" em card aprendido: volta para 1 dia e perde facilidade', () => {
     const review: SrsCard = {
       ...DEFAULT_SRS,
       srsState: 'review',
-      intervalDays: 10,
+      intervalDays: 20,
     };
     const next = schedule(review, 'again', now);
     expect(next).toMatchObject({
       srsState: 'relearning',
+      intervalDays: 1,
       ease: 2.3,
-      intervalDays: 5,
       lapses: 1,
     });
-    // Reaprendido, volta com o intervalo reduzido.
-    const back = schedule(next, 'good', now);
-    expect(back).toMatchObject({ srsState: 'review', intervalDays: 5 });
+    expect(schedule(next, 'good', now)).toMatchObject({
+      srsState: 'review',
+      intervalDays: 3,
+    });
   });
 
   it('facilidade nunca cai abaixo de 1,3', () => {
@@ -78,6 +89,17 @@ describe('srs.schedule', () => {
       card = schedule(card, 'good', now);
       days.push(card.intervalDays);
     }
-    expect(days).toEqual([0, 1, 3, 8, 20]);
+    expect(days).toEqual([3, 8, 20, 50, 125]);
+  });
+});
+
+describe('srs.studyDay', () => {
+  it('de madrugada (antes das 4h) ainda é o dia anterior', () => {
+    // 02h de 25/11 em São Paulo.
+    const lateNight = new Date('2026-11-25T05:00:00Z');
+    expect(studyDay(lateNight)).toBe('2026-11-24');
+    expect(studyDayStart(lateNight).toISOString()).toBe(
+      '2026-11-24T07:00:00.000Z',
+    );
   });
 });
