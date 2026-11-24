@@ -392,12 +392,23 @@ model Flashcard {
   correctCount   Int       @default(0) @map("correct_count")
   wrongCount     Int       @default(0) @map("wrong_count")
   lastReviewedAt DateTime? @map("last_reviewed_at") @db.Timestamptz(6)
+  /// Repetição espaçada (ver src/flashcards/srs.ts): new | learning | review | relearning.
+  srsState       String    @default("new") @map("srs_state")
+  /// Passo atual dentro de learning/relearning.
+  srsStep        Int       @default(0) @map("srs_step")
+  /// Fator de facilidade (multiplica o intervalo a cada "Lembrei").
+  ease           Float     @default(2.5)
+  intervalDays   Int       @default(0) @map("interval_days")
+  lapses         Int       @default(0)
+  /// Quando o card volta para a revisão; null = card novo (nunca estudado).
+  dueAt          DateTime? @map("due_at") @db.Timestamptz(6)
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, pt, en])
   @@index([userId, lastReviewedAt])
+  @@index([userId, dueAt])
   @@map("flashcards")
 }
 

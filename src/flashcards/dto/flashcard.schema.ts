@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { RATINGS } from '../srs';
 
 /** Trim + espaços internos colapsados — "dona  de casa " vira "dona de casa". */
 const text = (max: number) =>
@@ -38,9 +39,19 @@ export const updateFlashcardSchema = z
   .strict();
 export type UpdateFlashcardInput = z.infer<typeof updateFlashcardSchema>;
 
-export const reviewFlashcardSchema = z
-  .object({ result: z.enum(['correct', 'wrong']) })
-  .strict();
+/**
+ * Avaliação do card: again (Esqueci), hard (Difícil), good (Lembrei), easy (Fácil).
+ * `result` (correct/wrong) é o formato antigo — aceito enquanto front antigo existir.
+ */
+export const reviewFlashcardSchema = z.union([
+  z.object({ rating: z.enum(RATINGS) }).strict(),
+  z
+    .object({ result: z.enum(['correct', 'wrong']) })
+    .strict()
+    .transform(({ result }) => ({
+      rating: result === 'correct' ? ('good' as const) : ('again' as const),
+    })),
+]);
 export type ReviewFlashcardInput = z.infer<typeof reviewFlashcardSchema>;
 
 export const listFlashcardsQuerySchema = z.object({

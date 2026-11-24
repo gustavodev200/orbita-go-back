@@ -10,6 +10,14 @@ import type {
   ReviewFlashcardInput,
   UpdateFlashcardInput,
 } from './dto/flashcard.schema';
+import {
+  previewMinutes,
+  schedule,
+  SRS_STATES,
+  type Rating,
+  type SrsCard,
+  type SrsState,
+} from './srs';
 
 /** Teto do GET /flashcards — vocabulário pessoal, sem paginação por enquanto. */
 const LIST_LIMIT = 500;
@@ -23,6 +31,12 @@ export interface FlashcardDto {
   correctCount: number;
   wrongCount: number;
   lastReviewedAt: string | null;
+  state: SrsState;
+  intervalDays: number;
+  /** Quando volta para a revisão; null = card novo. */
+  dueAt: string | null;
+  /** Minutos até o card voltar, para cada botão de avaliação. */
+  nextIntervals: Record<Rating, number>;
   createdAt: string;
 }
 
@@ -32,7 +46,21 @@ export interface CreateFlashcardsResult {
   skipped: { pt: string; en: string }[];
 }
 
-function toDto(card: Flashcard): FlashcardDto {
+function srsOf(card: Flashcard): SrsCard {
+  const state = (SRS_STATES as readonly string[]).includes(card.srsState)
+    ? (card.srsState as SrsState)
+    : 'new';
+  return {
+    srsState: state,
+    srsStep: card.srsStep,
+    ease: card.ease,
+    intervalDays: card.intervalDays,
+    lapses: card.lapses,
+  };
+}
+
+function toDto(card: Flashcard, now = new Date()): FlashcardDto {
+  const srs = srsOf(card);
   return {
     id: card.id,
     pt: card.pt,
@@ -42,6 +70,10 @@ function toDto(card: Flashcard): FlashcardDto {
     correctCount: card.correctCount,
     wrongCount: card.wrongCount,
     lastReviewedAt: card.lastReviewedAt?.toISOString() ?? null,
+    state: srs.srsState,
+    intervalDays: srs.intervalDays,
+    dueAt: card.dueAt?.toISOString() ?? null,
+    nextIntervals: previewMinutes(srs, now),
     createdAt: card.createdAt.toISOString(),
   };
 }
@@ -67,20 +99,30 @@ export class FlashcardsService {
       orderBy: { createdAt: 'desc' },
       take: LIST_LIMIT,
     });
-    return cards.map(toDto);
+    const now = new Date();
+    return cards.map((c) => toDto(c, now));
   }
 
-  /** Nunca revisados primeiro, depois os revisados há mais tempo. */
+  /**
+   * Só o que venceu: primeiro os cards com revisão marcada (mais atrasados
+   * antes), depois os novos na ordem em que chegaram.
+   */
   async reviewQueue(userId: string, limit: number): Promise<FlashcardDto[]> {
-    const cards = await this.prisma.db.flashcard.findMany({
-      where: { userId },
-      orderBy: [
-        { lastReviewedAt: { sort: 'asc', nulls: 'first' } },
-        { createdAt: 'asc' },
-      ],
+    const now = new Date();
+    const due = await this.prisma.db.flashcard.findMany({
+      where: { userId, dueAt: { lte: now } },
+      orderBy: { dueAt: 'asc' },
       take: limit,
     });
-    return cards.map(toDto);
+    const fresh =
+      due.length < limit
+        ? await this.prisma.db.flashcard.findMany({
+            where: { userId, dueAt: null },
+            orderBy: { createdAt: 'asc' },
+            take: limit - due.length,
+          })
+        : [];
+    return [...due, ...fresh].map((c) => toDto(c, now));
   }
 
   /** Cria em lote ignorando pares pt/en repetidos (no lote ou já salvos). */
@@ -125,7 +167,7 @@ export class FlashcardsService {
           skipDuplicates: true,
         })
       : [];
-    return { created: created.map(toDto), skipped };
+    return { created: created.map((c) => toDto(c)), skipped };
   }
 
   async update(
@@ -152,19 +194,27 @@ export class FlashcardsService {
   async review(
     userId: string,
     id: string,
-    { result }: ReviewFlashcardInput,
+    { rating }: ReviewFlashcardInput,
   ): Promise<FlashcardDto> {
-    await this.findOwned(userId, id);
+    const current = await this.findOwned(userId, id);
+    const now = new Date();
+    const next = schedule(srsOf(current), rating, now);
     const card = await this.prisma.db.flashcard.update({
       where: { id },
       data: {
-        ...(result === 'correct'
-          ? { correctCount: { increment: 1 } }
-          : { wrongCount: { increment: 1 } }),
-        lastReviewedAt: new Date(),
+        ...(rating === 'again'
+          ? { wrongCount: { increment: 1 } }
+          : { correctCount: { increment: 1 } }),
+        srsState: next.srsState,
+        srsStep: next.srsStep,
+        ease: next.ease,
+        intervalDays: next.intervalDays,
+        lapses: next.lapses,
+        dueAt: next.dueAt,
+        lastReviewedAt: now,
       },
     });
-    return toDto(card);
+    return toDto(card, now);
   }
 
   async remove(userId: string, id: string): Promise<FlashcardDto> {
