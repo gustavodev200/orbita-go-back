@@ -21,8 +21,10 @@ import {
 } from '../common/schemas/common.schema';
 import {
   createTaskSchema,
+  moveTaskSchema,
   updateTaskSchema,
   type CreateTaskInput,
+  type MoveTaskInput,
   type UpdateTaskInput,
 } from './dto/task.schema';
 import { TasksService } from './tasks.service';
@@ -88,5 +90,16 @@ export class TasksController {
     @Param('id', new ZodValidationPipe(uuidParamSchema)) id: string,
   ) {
     return this.tasks.uncomplete(user.id, id);
+  }
+
+  /** Quadro Kanban: troca de coluna/ordem. Ir para "done" conclui (XP na 1ª vez); sair de "done" reabre. */
+  @Post(':id/move')
+  @HttpCode(200)
+  move(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', new ZodValidationPipe(uuidParamSchema)) id: string,
+    @Body(new ZodValidationPipe(moveTaskSchema)) dto: MoveTaskInput,
+  ) {
+    return this.tasks.move(user.id, id, dto);
   }
 }

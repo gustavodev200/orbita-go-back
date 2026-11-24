@@ -14,8 +14,22 @@ const taskFields = {
   reminderAt: reminderAtSchema.nullable().optional(),
 };
 
-export const createTaskSchema = z.object(taskFields).strict();
+export const taskStatusSchema = z.enum(['backlog', 'todo', 'doing', 'done']);
+export type TaskStatus = z.infer<typeof taskStatusSchema>;
+
+export const createTaskSchema = z
+  .object({ ...taskFields, status: taskStatusSchema.optional() })
+  .strict();
 export type CreateTaskInput = z.infer<typeof createTaskSchema>;
 
 export const updateTaskSchema = z.object(taskFields).partial().strict();
 export type UpdateTaskInput = z.infer<typeof updateTaskSchema>;
+
+/** Mover card no quadro: coluna de destino e, opcionalmente, a posição (sem = fim da coluna). */
+export const moveTaskSchema = z
+  .object({
+    status: taskStatusSchema,
+    position: z.number().finite().optional(),
+  })
+  .strict();
+export type MoveTaskInput = z.infer<typeof moveTaskSchema>;

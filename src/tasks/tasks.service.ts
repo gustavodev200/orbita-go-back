@@ -7,7 +7,12 @@ import {
 } from '../gamification/gamification.service';
 import { XP_RULES } from '../gamification/rules';
 import { PrismaService, type Tx } from '../prisma/prisma.service';
-import type { CreateTaskInput, UpdateTaskInput } from './dto/task.schema';
+import type {
+  CreateTaskInput,
+  MoveTaskInput,
+  TaskStatus,
+  UpdateTaskInput,
+} from './dto/task.schema';
 
 export interface TaskDto {
   id: string;
@@ -17,6 +22,9 @@ export interface TaskDto {
   reminderAt: string | null;
   done: boolean;
   doneAt: string | null;
+  status: TaskStatus;
+  position: number;
+  objectiveId: string | null;
 }
 
 function toDto(task: Task): TaskDto {
@@ -28,6 +36,9 @@ function toDto(task: Task): TaskDto {
     reminderAt: task.reminderAt,
     done: task.done,
     doneAt: task.doneAt ? task.doneAt.toISOString() : null,
+    status: task.status,
+    position: task.position,
+    objectiveId: task.objectiveId,
   };
 }
 
@@ -81,6 +92,25 @@ async function syncReminder(
   });
 }
 
+/**
+ * Posição para um card que chega na coluna sem posição explícita: fim da fila
+ * nas colunas de trabalho; topo em "done" (concluída mais recente primeiro).
+ */
+async function nextPosition(
+  tx: Tx,
+  userId: string,
+  status: TaskStatus,
+): Promise<number> {
+  const agg = await tx.task.aggregate({
+    where: { userId, status },
+    _max: { position: true },
+    _min: { position: true },
+  });
+  return status === 'done'
+    ? (agg._min.position ?? 0) - 1
+    : (agg._max.position ?? 0) + 1;
+}
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -102,6 +132,8 @@ export class TasksService {
 
   async create(userId: string, dto: CreateTaskInput): Promise<TaskDto> {
     return this.prisma.transaction(async (tx) => {
+      const status = dto.status ?? 'todo';
+      const done = status === 'done';
       const task = await tx.task.create({
         data: {
           userId,
@@ -109,9 +141,15 @@ export class TasksService {
           priority: dto.priority,
           dueDate: dueDateData(dto.dueDate) ?? null,
           reminderAt: dto.reminderAt ?? null,
+          status,
+          position: await nextPosition(tx, userId, status),
+          // Criada já concluída (coluna "Feito"): sem XP — evita farm criar/excluir.
+          done,
+          doneAt: done ? new Date() : null,
+          xpAwarded: done,
         },
       });
-      await syncReminder(tx, task);
+      await syncReminder(tx, task, !done);
       return toDto(task);
     });
   }
@@ -162,39 +200,68 @@ export class TasksService {
   async complete(userId: string, id: string): Promise<Rewarded<TaskDto>> {
     return this.prisma.transaction(async (tx) => {
       const task = await this.findOwned(tx, userId, id);
-      if (task.done) {
-        return { data: toDto(task), reward: null };
-      }
-      const updated = await tx.task.update({
-        where: { id: task.id },
-        data: { done: true, doneAt: new Date(), xpAwarded: true },
-      });
-      // Tarefa concluída não precisa mais avisar — desliga sem apagar (uncomplete religa).
-      await tx.reminder.updateMany({
-        where: { taskId: id },
-        data: { enabled: false },
-      });
-      // XP só na 1ª conclusão — desmarcar e marcar de novo não rende XP.
-      const reward = task.xpAwarded
-        ? null
-        : await this.gamification.award(userId, XP_RULES.taskComplete, tx);
-      return { data: toDto(updated), reward };
+      if (task.done) return { data: toDto(task), reward: null };
+      return this.applyStatus(tx, task, 'done');
     });
   }
 
   async uncomplete(userId: string, id: string): Promise<TaskDto> {
     return this.prisma.transaction(async (tx) => {
       const task = await this.findOwned(tx, userId, id);
-      const updated = await tx.task.update({
-        where: { id: task.id },
-        data: { done: false, doneAt: null },
-      });
-      await tx.reminder.updateMany({
-        where: { taskId: id },
-        data: { enabled: true },
-      });
-      return toDto(updated);
+      if (!task.done) return toDto(task);
+      return (await this.applyStatus(tx, task, 'todo')).data;
     });
+  }
+
+  async move(
+    userId: string,
+    id: string,
+    dto: MoveTaskInput,
+  ): Promise<Rewarded<TaskDto>> {
+    return this.prisma.transaction(async (tx) => {
+      const task = await this.findOwned(tx, userId, id);
+      return this.applyStatus(tx, task, dto.status, dto.position);
+    });
+  }
+
+  /**
+   * Única porta de troca de coluna: mantém `done`/`doneAt`, o lembrete e o XP
+   * coerentes com o status (entrar em "done" = concluir; sair = reabrir).
+   */
+  private async applyStatus(
+    tx: Tx,
+    task: Task,
+    status: TaskStatus,
+    position?: number,
+  ): Promise<Rewarded<TaskDto>> {
+    const finishing = status === 'done' && !task.done;
+    const reopening = status !== 'done' && task.done;
+    const updated = await tx.task.update({
+      where: { id: task.id },
+      data: {
+        status,
+        position:
+          position ??
+          (status === task.status
+            ? task.position
+            : await nextPosition(tx, task.userId, status)),
+        ...(finishing && { done: true, doneAt: new Date(), xpAwarded: true }),
+        ...(reopening && { done: false, doneAt: null }),
+      },
+    });
+    if (finishing || reopening) {
+      // Concluída não avisa mais — desliga sem apagar (reabrir religa).
+      await tx.reminder.updateMany({
+        where: { taskId: task.id },
+        data: { enabled: reopening },
+      });
+    }
+    // XP só na 1ª conclusão — desmarcar e marcar de novo não rende XP.
+    const reward =
+      finishing && !task.xpAwarded
+        ? await this.gamification.award(task.userId, XP_RULES.taskComplete, tx)
+        : null;
+    return { data: toDto(updated), reward };
   }
 
   private async findOwned(tx: Tx, userId: string, id: string): Promise<Task> {
