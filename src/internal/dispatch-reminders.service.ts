@@ -16,11 +16,16 @@ import { buildHabitPayload, isHabitDue } from './habit-due';
 
 /** Texto da notificação: o próprio lembrete é o título; o corpo diz quando. */
 export function buildReminderPayload(reminder: Reminder): PushPayload {
-  const finance = reminder.kind === 'finance';
+  const label =
+    reminder.kind === 'finance'
+      ? 'Finanças'
+      : reminder.kind === 'note'
+        ? 'Nota'
+        : 'Lembrete';
   return {
     title: reminder.title,
-    body: `${finance ? 'Finanças' : 'Lembrete'} · hoje às ${reminder.time}`,
-    url: '/agenda',
+    body: `${label} · hoje às ${reminder.time}`,
+    url: reminder.kind === 'note' ? '/notas' : '/agenda',
     tag: `reminder-${reminder.id}`,
   };
 }

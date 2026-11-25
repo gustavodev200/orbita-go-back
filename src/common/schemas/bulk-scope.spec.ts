@@ -22,12 +22,12 @@ describe('exclusão em lote — escopo do usuário', () => {
     });
   });
 
-  it('lembretes: só do próprio usuário e nunca espelhos de tarefa', async () => {
+  it('lembretes: só do próprio usuário e nunca espelhos de tarefa/nota', async () => {
     const { prisma, deleteMany } = prismaWith('reminder');
     const service = new RemindersService(prisma);
     await service.removeMany('u1', ['a']);
     expect(deleteMany).toHaveBeenCalledWith({
-      where: { userId: 'u1', taskId: null, id: { in: ['a'] } },
+      where: { userId: 'u1', taskId: null, noteId: null, id: { in: ['a'] } },
     });
   });
 });

@@ -42,6 +42,7 @@ enum TaskStatus {
 enum ReminderKind {
   finance
   task
+  note
 }
 
 enum ReminderRepeat {
@@ -111,6 +112,7 @@ model User {
   objectives        Objective[]
   challenges        Challenge[]
   lifeEvents        LifeEvent[]
+  notes             Note[]
 
   @@map("users")
 }
@@ -280,9 +282,12 @@ model Reminder {
   createdAt   DateTime       @default(now()) @map("created_at") @db.Timestamptz(6)
   /// Preenchido só para lembretes derivados de `Task.reminderAt` (kind = task) — permite sync/cascade.
   taskId      String?        @unique @map("task_id") @db.Uuid
+  /// Preenchido só para lembretes derivados de `Note.reminderAt` (kind = note).
+  noteId      String?        @unique @map("note_id") @db.Uuid
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task? @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  note Note? @relation(fields: [noteId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@map("reminders")
@@ -555,4 +560,30 @@ model LifeEvent {
 
   @@index([userId, date])
   @@map("life_events")
+}
+
+/// Nota rápida (estilo Keep): texto livre ou checklist, com cor, etiquetas e lembrete.
+model Note {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  title      String    @default("")
+  body       String    @default("")
+  /// Chave da paleta (default, red, orange, yellow, green, teal, blue, purple, pink, gray).
+  color      String    @default("default")
+  labels     String[]  @default([])
+  /// true = nota é checklist (`items`); false = texto (`body`).
+  checklist  Boolean   @default(false)
+  /// Itens do checklist: [{ id, text, done }].
+  items      Json      @default("[]")
+  pinned     Boolean   @default(false)
+  /// Datetime ISO com offset; espelhado num Reminder (kind = note) pro cron de push.
+  reminderAt String?   @map("reminder_at")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reminder Reminder?
+
+  @@index([userId])
+  @@map("notes")
 }

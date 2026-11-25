@@ -19,7 +19,7 @@ import { parseReminderText, type ParsedReminder } from './reminder-parser';
 export interface ReminderDto {
   id: string;
   title: string;
-  kind: 'finance' | 'task';
+  kind: 'finance' | 'task' | 'note';
   time: string;
   repeat: 'none' | 'daily' | 'weekly' | 'monthly';
   dayOfMonth?: number;
@@ -28,6 +28,8 @@ export interface ReminderDto {
   enabled: boolean;
   /** Presente quando o lembrete espelha `Task.reminderAt`. */
   taskId?: string;
+  /** Presente quando o lembrete espelha `Note.reminderAt`. */
+  noteId?: string;
 }
 
 function toDto(reminder: Reminder): ReminderDto {
@@ -42,6 +44,7 @@ function toDto(reminder: Reminder): ReminderDto {
     date: reminder.date ? dateToDay(reminder.date) : undefined,
     enabled: reminder.enabled,
     taskId: reminder.taskId ?? undefined,
+    noteId: reminder.noteId ?? undefined,
   };
 }
 
@@ -152,14 +155,14 @@ export class RemindersService {
 
   /**
    * Exclusão em lote do próprio usuário. Lembretes espelho de tarefa
-   * (`taskId`) ficam de fora: são controlados pela própria tarefa.
+   * (`taskId`) e de nota (`noteId`) ficam de fora: são controlados pela origem.
    */
   async removeMany(
     userId: string,
     ids: string[],
   ): Promise<{ deleted: number }> {
     const { count } = await this.prisma.db.reminder.deleteMany({
-      where: { userId, taskId: null, id: { in: ids } },
+      where: { userId, taskId: null, noteId: null, id: { in: ids } },
     });
     return { deleted: count };
   }
