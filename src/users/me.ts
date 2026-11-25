@@ -20,6 +20,7 @@ export interface Me {
   ownedItems: string[];
   enabledCategoryKeys: string[];
   notificationsEnabled: boolean;
+  notificationDigestTime: string;
 }
 
 export function toMe(user: User, today: string = businessDay()): Me {
@@ -45,5 +46,6 @@ export function toMe(user: User, today: string = businessDay()): Me {
     ownedItems: user.ownedItems,
     enabledCategoryKeys: user.enabledCategoryKeys,
     notificationsEnabled: user.notificationsEnabled,
+    notificationDigestTime: user.notificationDigestTime,
   };
 }

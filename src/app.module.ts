@@ -22,6 +22,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { PushModule } from './push/push.module';
 import { RecurringsModule } from './recurrings/recurrings.module';
 import { NotesModule } from './notes/notes.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { TasksModule } from './tasks/tasks.module';
 import { TimelineModule } from './timeline/timeline.module';
@@ -54,6 +55,7 @@ import { UsersModule } from './users/users.module';
     NotesModule,
     RemindersModule,
     PushModule,
+    NotificationsModule,
     InternalModule,
   ],
   controllers: [HealthController],

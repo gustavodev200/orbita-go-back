@@ -64,6 +64,13 @@ enum ObjectiveHorizon {
   long
 }
 
+/// Nível da notificação: urgente (push imediato), importante (push/resumo), informativo (só central).
+enum NotificationSeverity {
+  urgent
+  important
+  info
+}
+
 enum LifeEventKind {
   achievement
   project
@@ -73,25 +80,27 @@ enum LifeEventKind {
 /// Pessoa autenticada — id = `sub` do JWT do Supabase Auth (upsert no 1º request).
 /// Guarda também o estado de gamificação (nível, XP, moedas, ofensiva, loja).
 model User {
-  id                   String    @id @db.Uuid
-  email                String
-  name                 String?
-  avatarUrl            String?   @map("avatar_url")
-  onboarded            Boolean   @default(false)
-  level                Int       @default(1)
-  xp                   Int       @default(0)
-  coins                Int       @default(0)
-  streak               Int       @default(0)
-  streakRecord         Int       @default(0) @map("streak_record")
-  shields              Int       @default(0)
-  lastClosedDay        DateTime? @map("last_closed_day") @db.Date
-  theme                Theme     @default(system)
-  notificationsEnabled Boolean   @default(false) @map("notifications_enabled")
-  monthlyIncomeCents   Int?      @map("monthly_income_cents")
-  ownedItems           String[]  @default([]) @map("owned_items")
-  enabledCategoryKeys  String[]  @default([]) @map("enabled_category_keys")
-  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id                     String    @id @db.Uuid
+  email                  String
+  name                   String?
+  avatarUrl              String?   @map("avatar_url")
+  onboarded              Boolean   @default(false)
+  level                  Int       @default(1)
+  xp                     Int       @default(0)
+  coins                  Int       @default(0)
+  streak                 Int       @default(0)
+  streakRecord           Int       @default(0) @map("streak_record")
+  shields                Int       @default(0)
+  lastClosedDay          DateTime? @map("last_closed_day") @db.Date
+  theme                  Theme     @default(system)
+  notificationsEnabled   Boolean   @default(false) @map("notifications_enabled")
+  /// Horário (HH:mm) do resumo diário da central de notificações.
+  notificationDigestTime String    @default("08:00") @map("notification_digest_time")
+  monthlyIncomeCents     Int?      @map("monthly_income_cents")
+  ownedItems             String[]  @default([]) @map("owned_items")
+  enabledCategoryKeys    String[]  @default([]) @map("enabled_category_keys")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   accounts          Account[]
   transactions      Transaction[]
@@ -113,6 +122,7 @@ model User {
   challenges        Challenge[]
   lifeEvents        LifeEvent[]
   notes             Note[]
+  notifications     Notification[]
 
   @@map("users")
 }
@@ -240,23 +250,23 @@ model Goal {
 }
 
 model Task {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId      String    @map("user_id") @db.Uuid
+  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String     @map("user_id") @db.Uuid
   title       String
-  dueDate     DateTime? @map("due_date") @db.Date
-  priority    Priority  @default(medium)
-  reminderAt  String?   @map("reminder_at")
-  done        Boolean   @default(false)
-  doneAt      DateTime? @map("done_at") @db.Timestamptz(6)
+  dueDate     DateTime?  @map("due_date") @db.Date
+  priority    Priority   @default(medium)
+  reminderAt  String?    @map("reminder_at")
+  done        Boolean    @default(false)
+  doneAt      DateTime?  @map("done_at") @db.Timestamptz(6)
   /// Coluna no quadro Kanban; `done` ⇔ status = done.
   status      TaskStatus @default(todo)
   /// Ordem do card dentro da coluna (fracionária: inserir entre dois = média).
   position    Float      @default(0)
   /// XP de conclusão é pago uma única vez por tarefa (evita farm com complete/uncomplete).
-  xpAwarded   Boolean   @default(false) @map("xp_awarded")
+  xpAwarded   Boolean    @default(false) @map("xp_awarded")
   /// Meta (Objective) a que a tarefa contribui; conta no % de conclusão da meta.
-  objectiveId String?   @map("objective_id") @db.Uuid
-  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  objectiveId String?    @map("objective_id") @db.Uuid
+  createdAt   DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
 
   user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
   reminder  Reminder?
@@ -564,26 +574,57 @@ model LifeEvent {
 
 /// Nota rápida (estilo Keep): texto livre ou checklist, com cor, etiquetas e lembrete.
 model Note {
-  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  userId     String    @map("user_id") @db.Uuid
-  title      String    @default("")
-  body       String    @default("")
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  title      String   @default("")
+  body       String   @default("")
   /// Chave da paleta (default, red, orange, yellow, green, teal, blue, purple, pink, gray).
-  color      String    @default("default")
-  labels     String[]  @default([])
+  color      String   @default("default")
+  labels     String[] @default([])
   /// true = nota é checklist (`items`); false = texto (`body`).
-  checklist  Boolean   @default(false)
+  checklist  Boolean  @default(false)
   /// Itens do checklist: [{ id, text, done }].
-  items      Json      @default("[]")
-  pinned     Boolean   @default(false)
+  items      Json     @default("[]")
+  pinned     Boolean  @default(false)
   /// Datetime ISO com offset; espelhado num Reminder (kind = note) pro cron de push.
-  reminderAt String?   @map("reminder_at")
-  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+  reminderAt String?  @map("reminder_at")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   reminder Reminder?
 
   @@index([userId])
   @@map("notes")
+}
+
+/// Item da central de notificações, gerado pelo motor de regras (src/notifications).
+/// `key` é a identidade da situação (ex.: "tasks-overdue", "bill-due:<id>:<dia>") —
+/// a mesma situação nunca gera duas linhas; quando deixa de existir, vira `resolvedAt`.
+model Notification {
+  id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId      String               @map("user_id") @db.Uuid
+  key         String
+  kind        String
+  severity    NotificationSeverity
+  title       String
+  body        String
+  url         String?
+  /// Registro alvo das ações rápidas (tarefa, hábito, desafio…), quando há um só.
+  entityId    String?              @map("entity_id") @db.Uuid
+  /// Deve gerar push (o cron envia uma vez, fora do horário de silêncio).
+  wantsPush   Boolean              @default(false) @map("wants_push")
+  pushedAt    DateTime?            @map("pushed_at") @db.Timestamptz(6)
+  readAt      DateTime?            @map("read_at") @db.Timestamptz(6)
+  dismissedAt DateTime?            @map("dismissed_at") @db.Timestamptz(6)
+  /// A situação deixou de existir (tarefa concluída, conta paga…) — some da central.
+  resolvedAt  DateTime?            @map("resolved_at") @db.Timestamptz(6)
+  createdAt   DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId, createdAt])
+  @@map("notifications")
 }

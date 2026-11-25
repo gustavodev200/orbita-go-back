@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import {
   businessDay,
   businessTime,
@@ -6,6 +6,7 @@ import {
   dayToDate,
 } from '../common/time/business-time';
 import type { Reminder } from '../generated/prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   PushSenderService,
@@ -32,9 +33,12 @@ export function buildReminderPayload(reminder: Reminder): PushPayload {
 
 @Injectable()
 export class DispatchRemindersService {
+  private readonly logger = new Logger(DispatchRemindersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly sender: PushSenderService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   /**
@@ -83,6 +87,13 @@ export class DispatchRemindersService {
     }
 
     dispatched += await this.dispatchHabits(now, today, nowTime);
+    // Central de notificações (tarefas atrasadas, metas, contas, resumo…). Falha
+    // aqui nunca pode impedir os lembretes acima de saírem.
+    try {
+      dispatched += await this.notifications.runAll(now);
+    } catch (error) {
+      this.logger.warn(`Falha no motor de notificações: ${String(error)}`);
+    }
     return { dispatched };
   }
 

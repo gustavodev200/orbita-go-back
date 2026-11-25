@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { CATEGORY_KEYS } from '../../categories/categories';
+import { timeSchema } from '../../common/schemas/common.schema';
 
 export const categoryKeySchema = z
   .string()
@@ -23,6 +24,7 @@ export const updateMeSchema = z
       .optional(),
     enabledCategoryKeys: categoryKeysSchema.optional(),
     notificationsEnabled: z.boolean().optional(),
+    notificationDigestTime: timeSchema.optional(),
   })
   .strict();
 
