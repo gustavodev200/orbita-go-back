@@ -11,7 +11,8 @@ import type {
   UpdateFlashcardInput,
 } from './dto/flashcard.schema';
 import {
-  nextIntervals,
+  LEARNING_STEPS,
+  nextIntervalMinutes,
   schedule,
   SRS_STATES,
   studyDayStart,
@@ -38,7 +39,9 @@ export interface FlashcardDto {
   intervalDays: number;
   /** Quando volta para a revisão; null = card novo. */
   dueAt: string | null;
-  /** Em quantos dias o card volta, para cada botão de avaliação. */
+  /** Em quantos minutos o card volta, para cada botão de avaliação. */
+  nextIntervalMinutes: Record<Rating, number>;
+  /** Legado (front antigo): o mesmo intervalo em dias, pode ser fracionário. */
   nextIntervalDays: Record<Rating, number>;
   createdAt: string;
 }
@@ -62,8 +65,16 @@ function srsOf(card: Flashcard): SrsCard {
   };
 }
 
+const toDays = (m: Record<Rating, number>): Record<Rating, number> => ({
+  again: m.again / 1440,
+  hard: m.hard / 1440,
+  good: m.good / 1440,
+  easy: m.easy / 1440,
+});
+
 function toDto(card: Flashcard): FlashcardDto {
   const srs = srsOf(card);
+  const minutes = nextIntervalMinutes(srs);
   return {
     id: card.id,
     pt: card.pt,
@@ -76,7 +87,8 @@ function toDto(card: Flashcard): FlashcardDto {
     state: srs.srsState,
     intervalDays: srs.intervalDays,
     dueAt: card.dueAt?.toISOString() ?? null,
-    nextIntervalDays: nextIntervals(srs),
+    nextIntervalMinutes: minutes,
+    nextIntervalDays: toDays(minutes),
     createdAt: card.createdAt.toISOString(),
   };
 }
@@ -129,17 +141,15 @@ export class FlashcardsService {
     now: Date,
     room: number,
   ): Promise<Flashcard[]> {
-    // Agendamento é em dias: card estudado pela 1ª vez hoje tem exatamente uma revisão.
-    const studiedToday = await this.prisma.db.flashcard.count({
-      where: {
-        userId,
-        lastReviewedAt: { gte: studyDayStart(now) },
-        OR: [
-          { correctCount: 1, wrongCount: 0 },
-          { correctCount: 0, wrongCount: 1 },
-        ],
-      },
+    // Card novo passa por várias revisões curtas no mesmo dia: conta como
+    // "começado hoje" quem foi revisto hoje e ainda tem poucas revisões no total.
+    const reviewedToday = await this.prisma.db.flashcard.findMany({
+      where: { userId, lastReviewedAt: { gte: studyDayStart(now) } },
+      select: { correctCount: true, wrongCount: true },
     });
+    const studiedToday = reviewedToday.filter(
+      (c) => c.correctCount + c.wrongCount <= LEARNING_STEPS.length,
+    ).length;
     const take = Math.min(room, NEW_PER_DAY - studiedToday);
     if (take <= 0) return [];
     return this.prisma.db.flashcard.findMany({

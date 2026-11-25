@@ -89,7 +89,7 @@ describe('FlashcardsService.review', () => {
     return data;
   }
 
-  it('"Lembrei" num card novo conta acerto e agenda para daqui a 3 dias', async () => {
+  it('"Lembrei" num card novo conta acerto e volta em 5 minutos', async () => {
     const { db, prisma } = buildPrisma();
     db.flashcard.findFirst.mockResolvedValue(card());
     db.flashcard.update.mockImplementation(({ data }: { data: object }) =>
@@ -97,20 +97,40 @@ describe('FlashcardsService.review', () => {
     );
     const service = new FlashcardsService(prisma);
 
+    const before = Date.now();
     const dto = await service.review('u1', 'c1', { rating: 'good' });
 
     const data = updateData(db);
     expect(data.correctCount).toEqual({ increment: 1 });
     expect(data.wrongCount).toBeUndefined();
-    expect(data.srsState).toBe('review');
-    expect(data.intervalDays).toBe(3);
+    expect(data.srsState).toBe('learning');
+    expect(data.srsStep).toBe(1);
     expect(data.lastReviewedAt).toBeInstanceOf(Date);
-    const dueInDays =
-      ((data.dueAt as Date).getTime() - Date.now()) / 86_400_000;
-    expect(dueInDays).toBeGreaterThan(2);
-    expect(dueInDays).toBeLessThanOrEqual(3);
-    expect(dto.state).toBe('review');
+    const dueInMin = ((data.dueAt as Date).getTime() - before) / 60_000;
+    expect(dueInMin).toBeGreaterThanOrEqual(5);
+    expect(dueInMin).toBeLessThan(5.1);
+    expect(dto.state).toBe('learning');
+    expect(dto.nextIntervalMinutes).toEqual({
+      again: 1,
+      hard: 3,
+      good: 5,
+      easy: 10,
+    });
+  });
+
+  it('card formado: "Lembrei" agenda em dias', async () => {
+    const { db, prisma } = buildPrisma();
+    db.flashcard.findFirst.mockResolvedValue(card({ srsState: 'review' }));
+    db.flashcard.update.mockImplementation(({ data }: { data: object }) =>
+      Promise.resolve(card({ ...data })),
+    );
+    const service = new FlashcardsService(prisma);
+
+    const dto = await service.review('u1', 'c1', { rating: 'good' });
+
+    expect(updateData(db).intervalDays).toBe(3);
     // Próximo "Lembrei": 3 × 2,5 = 8 dias.
+    expect(dto.nextIntervalMinutes.good).toBe(8 * 1440);
     expect(dto.nextIntervalDays.good).toBe(8);
   });
 
@@ -148,6 +168,7 @@ describe('FlashcardsService.reviewQueue', () => {
     });
     db.flashcard.findMany
       .mockResolvedValueOnce([due])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([card({ id: 'n1' })]);
     const service = new FlashcardsService(prisma);
 
@@ -155,11 +176,11 @@ describe('FlashcardsService.reviewQueue', () => {
 
     expect(queue.map((c) => c.id)).toEqual(['d1', 'n1']);
     type Args = [{ where: Record<string, unknown>; take: number }];
-    const calls = db.flashcard.findMany.mock.calls as [Args, Args];
+    const calls = db.flashcard.findMany.mock.calls as [Args, Args, Args];
     expect((calls[0][0].where.dueAt as { lte: unknown }).lte).toBeInstanceOf(
       Date,
     );
-    expect(calls[1][0]).toMatchObject({
+    expect(calls[2][0]).toMatchObject({
       where: { userId: 'u1', dueAt: null },
       take: 1,
     });
@@ -167,25 +188,38 @@ describe('FlashcardsService.reviewQueue', () => {
 
   it('libera só o que falta para 20 novos no dia', async () => {
     const { db, prisma } = buildPrisma();
-    db.flashcard.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
-    db.flashcard.count.mockResolvedValue(18);
+    // 18 começados hoje (poucas revisões) + 1 antigo revisto hoje (não conta).
+    const startedToday = Array.from({ length: 18 }, () => ({
+      correctCount: 2,
+      wrongCount: 1,
+    }));
+    db.flashcard.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        ...startedToday,
+        { correctCount: 9, wrongCount: 2 },
+      ])
+      .mockResolvedValueOnce([]);
     const service = new FlashcardsService(prisma);
 
     await service.reviewQueue('u1', 20);
 
     type Args = [{ take: number }];
-    const calls = db.flashcard.findMany.mock.calls as [Args, Args];
-    expect(calls[1][0].take).toBe(2);
+    const calls = db.flashcard.findMany.mock.calls as [Args, Args, Args];
+    expect(calls[2][0].take).toBe(2);
   });
 
   it('não busca novos quando o limite do dia acabou', async () => {
     const { db, prisma } = buildPrisma();
-    db.flashcard.findMany.mockResolvedValueOnce([]);
-    db.flashcard.count.mockResolvedValue(20);
+    db.flashcard.findMany
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce(
+        Array.from({ length: 20 }, () => ({ correctCount: 1, wrongCount: 0 })),
+      );
     const service = new FlashcardsService(prisma);
 
     expect(await service.reviewQueue('u1', 20)).toEqual([]);
-    expect(db.flashcard.findMany).toHaveBeenCalledTimes(1);
+    expect(db.flashcard.findMany).toHaveBeenCalledTimes(2);
   });
 
   it('não busca novos quando os vencidos já enchem a rodada', async () => {
